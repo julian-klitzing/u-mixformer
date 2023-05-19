@@ -14,6 +14,8 @@ from mmseg.registry import MODELS
 # from mmengine.runner import load_checkpoint
 import math
 
+print(f'MixTransformer for FeedFormer')
+
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
