@@ -14,7 +14,7 @@ from mmseg.registry import MODELS
 # from mmengine.runner import load_checkpoint
 import math
 
-print(f'MixTransformer for FeedFormer')
+print(f'MixTransformer for FeedForme')
 
 
 class Mlp(nn.Module):
