@@ -174,7 +174,7 @@ class FeedFormerHead(BaseDecodeHead):
     """
     SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers
     """
-    def __init__(self, feature_strides, **kwargs):
+    def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
         super(FeedFormerHead, self).__init__(input_transform='multiple_select', **kwargs)
         assert len(feature_strides) == len(self.in_channels)
         assert min(feature_strides) == feature_strides[0]
@@ -182,9 +182,7 @@ class FeedFormerHead(BaseDecodeHead):
 
         c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
 
-        decoder_params = kwargs['decoder_params']
-        embedding_dim = decoder_params['embed_dim']
-        # embedding_dim = 128
+        embedding_dim = 128
 
         self.attn_c4_c1 = Block(dim1=c4_in_channels, dim2=c1_in_channels, num_heads=8, mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=8)

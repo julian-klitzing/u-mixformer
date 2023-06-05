@@ -15,16 +15,6 @@ We use [MMSegmentation v0.13.0](https://github.com/open-mmlab/mmsegmentation/tre
 
 For install and data preparation, please refer to the guidelines in [MMSegmentation v0.13.0](https://github.com/open-mmlab/mmsegmentation/tree/v0.13.0).
 
-Environment Settings:
-```CUDA 11.0``` and  ```pytorch 1.7.1``` 
-
-```
-pip install torchvision==0.8.2
-pip install timm==0.3.2
-pip install mmcv-full==1.2.7
-pip install opencv-python==4.5.1.48
-cd FeedFormer-master && pip install -e . --user
-```
 
 ## Evaluation
 
@@ -36,7 +26,7 @@ Example: evaluate ```FeedFormer-B0``` on ```ADE20K```:
 
 ```
 # Single-gpu testing
-python tools/test.py local_configs/feedformer/B0/feedformer.b0.512x512.ade.160k.py /path/to/checkpoint_file
+python tools/test.py configs/feedformer/B0/feedformer.b0.512x512.ade.160k.py /path/to/checkpoint_file
 
 # Multi-gpu testing
 ./tools/dist_test.sh local_configs/feedformer/B0/feedformer.b0.512x512.ade.160k.py /path/to/checkpoint_file <GPU_NUM>
