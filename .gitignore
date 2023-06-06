@@ -119,3 +119,7 @@ mmseg/.mim
 # Pytorch
 *.pth
 checkpoints
+docker/Dockerfile
+docker/serve/config.properties
+docker/serve/Dockerfile
+docker/serve/entrypoint.sh
