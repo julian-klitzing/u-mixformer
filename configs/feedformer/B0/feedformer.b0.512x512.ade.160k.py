@@ -1,46 +1,46 @@
 _base_ = [
-    '../../_base_/models/segformer_old.py',
-    '../../_base_/datasets/ade20k_repeat.py',
-    '../../_base_/default_runtime.py',
-    '../../_base_/schedules/schedule_160k_adamw.py'
+    '../../_base_/models/segformer_mit-b0.py', '../../_base_/datasets/ade20k.py',
+    '../../_base_/default_runtime.py', '../../_base_/schedules/schedule_160k.py'
 ]
-
-# model settings
-norm_cfg = dict(type='SyncBN', requires_grad=True)
-find_unused_parameters = True
+crop_size = (512, 512)
+data_preprocessor = dict(size=crop_size)
 model = dict(
-    type='EncoderDecoder',
-    pretrained='pretrained/mit_b0.pth',
+    data_preprocessor=data_preprocessor,
+    pretrained='checkpoints/classification/mit_b0.pth',
     decode_head=dict(
         type='FeedFormerHead',
-        in_channels=[32, 64, 160, 256],
-        in_index=[0, 1, 2, 3],
         feature_strides=[4, 8, 16, 32],
-        channels=128,
-        dropout_ratio=0.1,
-        num_classes=150,
-        norm_cfg=norm_cfg,
-        align_corners=False,
-        decoder_params=dict(embed_dim=128),
-        loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0)),
-    # model training and testing settings
-    train_cfg=dict(),
-    test_cfg=dict(mode='whole'))
+        # in_channels=[32, 64, 160, 256],
+        # in_index=[0, 1, 2, 3],
+        # channels=128,
+        num_classes=150
+    )
+)
 
-# optimizer
-optimizer = dict(_delete_=True, type='AdamW', lr=0.00006, betas=(0.9, 0.999), weight_decay=0.01,
-                 paramwise_cfg=dict(custom_keys={'pos_block': dict(decay_mult=0.),
-                                                 'norm': dict(decay_mult=0.),
-                                                 'head': dict(lr_mult=10.)
-                                                 }))
+optim_wrapper = dict(
+    _delete_=True,
+    type='OptimWrapper',
+    optimizer=dict(
+        type='AdamW', lr=0.00006, betas=(0.9, 0.999), weight_decay=0.01),
+    paramwise_cfg=dict(
+        custom_keys={
+            'pos_block': dict(decay_mult=0.),
+            'norm': dict(decay_mult=0.),
+            'head': dict(lr_mult=10.)
+        }))
 
-
-lr_config = dict(_delete_=True, policy='poly',
-                 warmup='linear',
-                 warmup_iters=1500,
-                 warmup_ratio=1e-6,
-                 power=1.0, min_lr=0.0, by_epoch=False)
-
-
-data = dict(samples_per_gpu=4)
-evaluation = dict(interval=4000, metric='mIoU')
+param_scheduler = [
+    dict(
+        type='LinearLR', start_factor=1e-6, by_epoch=False, begin=0, end=1500),
+    dict(
+        type='PolyLR',
+        eta_min=0.0,
+        power=1.0,
+        begin=1500,
+        end=160000,
+        by_epoch=False,
+    )
+]
+train_dataloader = dict(batch_size=32, num_workers=4)
+val_dataloader = dict(batch_size=16, num_workers=4)
+test_dataloader = val_dataloader

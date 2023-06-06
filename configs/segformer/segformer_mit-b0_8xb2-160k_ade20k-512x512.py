@@ -6,7 +6,7 @@ crop_size = (512, 512)
 data_preprocessor = dict(size=crop_size)
 model = dict(
     data_preprocessor=data_preprocessor,
-    pretrained='pretrain/mit_b0.pth',
+    pretrained='checkpoints/classification/mit_b0.pth',
     decode_head=dict(num_classes=150))
 
 optim_wrapper = dict(

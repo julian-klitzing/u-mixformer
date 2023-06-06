@@ -174,7 +174,7 @@ class FeedFormerHead(BaseDecodeHead):
     """
     SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers
     """
-    def __init__(self, feature_strides, **kwargs):
+    def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
         super(FeedFormerHead, self).__init__(input_transform='multiple_select', **kwargs)
         assert len(feature_strides) == len(self.in_channels)
         assert min(feature_strides) == feature_strides[0]
@@ -182,9 +182,7 @@ class FeedFormerHead(BaseDecodeHead):
 
         c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
 
-        decoder_params = kwargs['decoder_params']
-        embedding_dim = decoder_params['embed_dim']
-        # embedding_dim = 128
+        embedding_dim = 128
 
         self.attn_c4_c1 = Block(dim1=c4_in_channels, dim2=c1_in_channels, num_heads=8, mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=8)
@@ -218,14 +216,17 @@ class FeedFormerHead(BaseDecodeHead):
         c4 = c4.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, patches]
 
         _c4 = self.attn_c4_c1(c4, c1, h1, w1, h4, w4)
+        # _c4 += c4
         _c4 = _c4.permute(0,2,1).reshape(n, -1, h4, w4)
         _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
 
         _c3 = self.attn_c3_c1(c3, c1, h1, w1, h3, w3)
+        # _c3 += c3
         _c3 = _c3.permute(0,2,1).reshape(n, -1, h3, w3)
         _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
 
         _c2 = self.attn_c2_c1(c2, c1, h1, w1, h2, w2)
+        # _c2 += c2
         _c2 = _c2.permute(0,2,1).reshape(n, -1, h2, w2)
         _c2 = resize(_c2, size=(h1, w1), mode='bilinear', align_corners=False)
 
