@@ -18,6 +18,9 @@ from torch.nn.modules.utils import _pair as to_2tuple
 from mmseg.registry import MODELS
 from ..utils import PatchEmbed, resize
 
+# Rollout imports
+import numpy as np
+
 
 class TransformerEncoderLayer(BaseModule):
     """Implements one encoder layer in Vision Transformer.
@@ -73,7 +76,8 @@ class TransformerEncoderLayer(BaseModule):
                 attn_drop=attn_drop_rate,
                 proj_drop=drop_rate,
                 batch_first=batch_first,
-                bias=qkv_bias))
+                bias=qkv_bias,
+                )) # added attn_cfg 
 
         self.build_attn(attn_cfg)
 
@@ -110,7 +114,7 @@ class TransformerEncoderLayer(BaseModule):
     def forward(self, x):
 
         def _inner_forward(x):
-            x = self.attn(self.norm1(x), identity=x)
+            x = self.attn(self.norm1(x), identity=x, )
             x = self.ffn(self.norm2(x), identity=x)
             return x
 
@@ -239,6 +243,8 @@ class VisionTransformer(BaseModule):
             init_cfg=None,
         )
 
+        
+
         num_patches = (img_size[0] // patch_size) * \
             (img_size[1] // patch_size)
 
@@ -284,6 +290,19 @@ class VisionTransformer(BaseModule):
             self.norm1_name, norm1 = build_norm_layer(
                 norm_cfg, embed_dims, postfix=1)
             self.add_module(self.norm1_name, norm1)
+
+        # Hook register
+        # attention_layer_name = 'attn_drop'
+        # for block in [self.block1, self.block2, self.block3, self.block4]:
+        #     for name, module in block.named_modules():
+        #         if attention_layer_name in name:
+        #             module.register_forward_hook(self.get_attention)
+
+        self.attention_maps = []
+        for name, module in self.layers.named_modules():
+            # "attn.dropout_layer"
+            if name.__contains__("attn.attn"):
+                module.register_forward_hook(self.get_attention)
 
     @property
     def norm1(self):
@@ -398,7 +417,8 @@ class VisionTransformer(BaseModule):
     def forward(self, inputs):
         B = inputs.shape[0]
 
-        x, hw_shape = self.patch_embed(inputs)
+        x, hw_shape = self.patch_embed(inputs) 
+        self.hw_shape = hw_shape # added instance variable to access it in rollout()
 
         # stole cls_tokens impl from Phil Wang, thanks
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -436,3 +456,49 @@ class VisionTransformer(BaseModule):
             for m in self.modules():
                 if isinstance(m, nn.LayerNorm):
                     m.eval()
+
+    def get_attention(self, module, input, output):
+        attention_map = output[1].cpu() # take weights from tupel
+        # attention_map = attention_map[0] # remove batch dimension
+        self.attention_maps.append(attention_map)
+
+    
+    def rollout(self):
+        attentions = self.attention_maps
+        discard_ratio = 0.9
+        head_fusion = "max"
+
+        result = torch.eye(attentions[0].size(-1))
+        with torch.no_grad():
+            for attention in attentions:
+                if head_fusion == "mean":
+                    attention_heads_fused = attention.mean(axis=1) 
+                elif head_fusion == "max":
+                    attention_heads_fused = attention.max(axis=1)[0] 
+                    attention_heads_fused = attention.min(axis=1)[0] 
+                else:
+                    raise "Attention head fusion type Not supported"
+
+                # Drop the lowest attentions, but
+                # don't drop the class token
+                flat = attention_heads_fused.view(attention_heads_fused.size(0), -1)
+                _, indices = flat.topk(int(flat.size(-1)*discard_ratio), -1, False)
+                indices = indices[indices != 0]
+                flat[0, indices] = 0
+
+                I = torch.eye(attention_heads_fused.size(-1))
+                a = (attention_heads_fused + 1.0*I)/2
+                a = a / a.sum(dim=-1)
+
+                result = torch.matmul(a, result)
+        
+        # Look at the total attention between the class token,
+        # and the image patches
+        mask = result[0, 0 , 1 :] 
+        # In case of 224x224 image, this brings us from 196 to 14
+        # width = int(mask.size(-1)**0.5)
+        # mask = mask.reshape(width, width).numpy() 
+        mask = mask.reshape(self.hw_shape).numpy()
+        mask = mask / np.max(mask)
+        return mask    
+
