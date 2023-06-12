@@ -1,13 +1,22 @@
 _base_ = [
-    '../_base_/models/segformer_mit-b0.py', '../_base_/datasets/ade20k.py',
-    '../_base_/default_runtime.py', '../_base_/schedules/schedule_160k.py'
+    '../../_base_/models/segformer_mit-b0.py', '../../_base_/datasets/cityscapes_1024x1024.py',
+    '../../_base_/default_runtime.py', '../../_base_/schedules/schedule_160k_adamw.py'
 ]
-crop_size = (512, 512)
+crop_size = (1024, 1024)
 data_preprocessor = dict(size=crop_size)
 model = dict(
     data_preprocessor=data_preprocessor,
     pretrained='checkpoints/classification/mit_b0.pth',
-    decode_head=dict(num_classes=150))
+    decode_head=dict(
+        type='FeedFormerHead',
+        feature_strides=[4, 8, 16, 32],
+        # in_channels=[32, 64, 160, 256],
+        # in_index=[0, 1, 2, 3],
+        # channels=128,
+        num_classes=150
+    ),
+    test_cfg=dict(mode='slide', crop_size=(1024, 1024), stride=(768, 768))
+)
 
 optim_wrapper = dict(
     _delete_=True,
@@ -33,6 +42,6 @@ param_scheduler = [
         by_epoch=False,
     )
 ]
-train_dataloader = dict(batch_size=2, num_workers=2)
+train_dataloader = dict(batch_size=1, num_workers=4)
 val_dataloader = dict(batch_size=1, num_workers=4)
 test_dataloader = val_dataloader
