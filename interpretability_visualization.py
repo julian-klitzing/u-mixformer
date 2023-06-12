@@ -3,6 +3,7 @@ This script mainly adopts the functionality of the image_demo.py script i.e.,
 given a config file it does an inference step on a certain query image. 
 Furthermore it extract the interpretability measures and saves them into a dedicated
 folder.
+Does this work?
 """
 
 # Copyright (c) OpenMMLab. All rights reserved.
