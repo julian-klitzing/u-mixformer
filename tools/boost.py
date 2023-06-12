@@ -25,7 +25,7 @@ from mmseg.registry import RUNNERS
 #     print('output:', output)
 
 @RUNNERS.register_module()
-class BoostRunner(Runner):
+class BoostRunner(Runner): #For boosting
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # self.model.eval() #freezing the model (just in case, please check self.model.training as False (if true, then it will be trained))
