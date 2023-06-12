@@ -216,17 +216,17 @@ class FeedFormerHead(BaseDecodeHead):
         c4 = c4.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, patches]
 
         _c4 = self.attn_c4_c1(c4, c1, h1, w1, h4, w4)
-        _c4 += c4
+        # _c4 += c4
         _c4 = _c4.permute(0,2,1).reshape(n, -1, h4, w4)
         _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
 
         _c3 = self.attn_c3_c1(c3, c1, h1, w1, h3, w3)
-        _c3 += c3
+        # _c3 += c3
         _c3 = _c3.permute(0,2,1).reshape(n, -1, h3, w3)
         _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
 
         _c2 = self.attn_c2_c1(c2, c1, h1, w1, h2, w2)
-        _c2 += c2
+        # _c2 += c2
         _c2 = _c2.permute(0,2,1).reshape(n, -1, h2, w2)
         _c2 = resize(_c2, size=(h1, w1), mode='bilinear', align_corners=False)
 
