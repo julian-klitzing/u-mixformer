@@ -4,66 +4,159 @@ import logging
 import os
 import os.path as osp
 import torch
-
-from utils.arch_modif import get_module_in_model
+from torch import nn
+import torch.nn.functional as F
+from torchinfo import summary
+from copy import deepcopy
+from mmseg.models.backbones import EfficientMultiheadAttention
 
 from mmengine.config import Config, DictAction
 from mmengine.logging import print_log
 from mmengine.runner import Runner
+from mmengine.model import is_model_wrapper
 
 from mmseg.registry import RUNNERS
-
-# def forward_hook_fn(
-#     module,  # object to be registered hooks
-#     input,   # forward input of module
-#     output,  # forward output of module
-# ):
-#     print(f'"forward_hook_fn" is invoked by {module.name}')
-#     print('weight:', module.weight.data)
-#     print('bias:', module.bias.data)
-#     print('input:', input)
-#     print('output:', output)
 
 @RUNNERS.register_module()
 class BoostRunner(Runner): #For boosting
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # self.model.eval() #freezing the model (just in case, please check self.model.training as False (if true, then it will be trained))
+
         print(f'here we are')
-    #     attention_layer_name = 'attn_drop' #target layer name
-    #     for name, module in self.model.named_modules():
-    #         if attention_layer_name in name:
-    #             module.register_forward_hook(forward_hook_fn)
-
-    #     x = torch.Tensor([[0.0, 1.0, 2.0]])
-    #     self.model(x)
-
-    #     modules = self.get_modules()
-
-    # def compute_norm(self, layer_name):
-    #     weights = get_module_in_model(self.model, layer_name).weight.data.cpu().detach().numpy() #weight를 얻고
-    #     return [0.9]*weights.shape[0] #normal은 여기 통과 (output channel 갯수 만큼)
 
 
-    # def get_modules(self, attention_layer_name='attn_drop'):
-    #     module_list = []
-    #     for name, module in self.model.named_modules():
-    #         if attention_layer_name in name:
-    #             module_list.append(module)
-    #             # compute init lambda with norm
-    #             norm = self.compute_norm(name)
-    #             # init_lamb.append(torch.tensor(norm, dtype=torch.float32)) #init_lamb = lambda 초기값 (이 값이 결국 pruning 할지 말지를 결정)
-    #             cnt += 1
-    #     return module_list
+    def boost(self) -> nn.Module:
+        """Launch training.
+
+        Returns:
+            nn.Module: The model after training.
+        """
+        if is_model_wrapper(self.model):
+            ori_model = self.model.module
+        else:
+            ori_model = self.model
+        assert hasattr(ori_model, 'train_step'), (
+            'If you want to train your model, please make sure your model '
+            'has implemented `train_step`.')
+
+        if self._val_loop is not None:
+            assert hasattr(ori_model, 'val_step'), (
+                'If you want to validate your model, please make sure your '
+                'model has implemented `val_step`.')
+
+        if self._train_loop is None:
+            raise RuntimeError(
+                '`self._train_loop` should not be None when calling train '
+                'method. Please provide `train_dataloader`, `train_cfg`, '
+                '`optimizer` and `param_scheduler` arguments when '
+                'initializing runner.')
+
+        self._train_loop = self.build_train_loop(
+            self._train_loop)  # type: ignore
+
+        # `build_optimizer` should be called before `build_param_scheduler`
+        #  because the latter depends on the former
+        self.optim_wrapper = self.build_optim_wrapper(self.optim_wrapper)
+        # Automatically scaling lr by linear scaling rule
+        self.scale_lr(self.optim_wrapper, self.auto_scale_lr)
+
+        if self.param_schedulers is not None:
+            self.param_schedulers = self.build_param_scheduler(  # type: ignore
+                self.param_schedulers)  # type: ignore
+
+        if self._val_loop is not None:
+            self._val_loop = self.build_val_loop(
+                self._val_loop)  # type: ignore
+        # TODO: add a contextmanager to avoid calling `before_run` many times
+        self.call_hook('before_run')
+
+        # initialize the model weights
+        self._init_model_weights()
+        # make sure checkpoint-related hooks are triggered after `before_run`
+        self.load_or_resume()
+
+        # ---------------------- insert bottleneck and freeze weights --------------
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        input_shape = (1, 3, 512, 512)
+        attn_module = "proj_drop"
+        model = self.model
+
+        shapes = get_attention_shapes(model.backbone, device, input_shape, attn_module)
+        bottleneck_replacement_map = get_bottleneck_replacement_map(model.backbone, shapes, attn_module)
+        model(torch.randn(input_shape).to(device)) # try the forward pass on the unmodified model
+        for key, value in bottleneck_replacement_map.items():
+            replace_layer(model.backbone, target=value[0], replacement=value[1])
+        freeze_all_params_except_from(model, param_name="btn_alphas")
+
+        
+
+        #model(torch.rand((1, 3, 256, 300), device=device))
+        torch.save(model.state_dict(), 'model_init.pth')
     
-## Show model configuration
-# from mmengine.analysis import get_model_complexity_info
-# analysis_results = get_model_complexity_info(self.model.cpu(), (3, 512, 512)) #(3, 512, 512): image_shape 
-# print(analysis_results['out_table'])#check the model's complexity (see mmengine doc.)
+        # model = model.to(device)
+        sum_ = summary(model, input_size=input_shape)
+        # ---------------------- insert bottleneck and freeze weights --------------
+        
+        
+        # Initiate inner count of `optim_wrapper`.
+        self.optim_wrapper.initialize_count_status(
+            self.model,
+            self._train_loop.iter,  # type: ignore
+            self._train_loop.max_iters)  # type: ignore
+
+        # Maybe compile the model according to options in self.cfg.compile
+        # This must be called **AFTER** model has been wrapped.
+        self._maybe_compile('train_step')
+        
+        self.dummy_train()
+        
+        model = self.train_loop.run()  # type: ignore
+        self.call_hook('after_run')
+        return model
+
+    def dummy_train(self):
+        import torch
+        import torch.nn as nn
+        import torch.optim as optim
+        # Assuming you have a model and dataloader defined
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model.to(device)
+
+        # Define the loss function
+        criterion = nn.CrossEntropyLoss()
+
+        # Define the optimizer
+        optimizer = optim.Adam(self.model.parameters(), lr=0.001)
+
+        num_epochs = 2
+        # Training loop
+        for epoch in range(num_epochs):
+            self.model.train()  # Set the model to training mode
+            
+            for images, labels in self.train_dataloader:
+                images = images.to(device)
+                labels = labels.to(device)                
+                # Forward pass
+                outputs = self.model(images)
+                
+                # Compute the loss
+                loss = criterion(outputs, labels)
+                
+                # Backward pass and optimization
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+            
+            # Print the loss for each epoch
+            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}")
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a segmentor')
     parser.add_argument('config', help='train config file path')
+    parser.add_argument('--checkpoint', help='checkpoint file')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--resume',
@@ -100,6 +193,96 @@ def parse_args():
 
     return args
 
+class Bottleneck(nn.Module):
+
+    def __init__(self, shape):
+        super().__init__()
+        self.btn_alphas = nn.Parameter(torch.rand(shape), requires_grad=True)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, r):
+        # resize necessary if input image shape different from alphas initialization process
+        # if r.shape[-2:] != self.btn_alphas.shape[-2:]:
+        #     btn_alphas_resized = F.interpolate(self.btn_alphas.unsqueeze(0), size=r.shape[1:], mode="bilinear").squeeze().to(r.device)
+        #     return r * self.sigmoid(btn_alphas_resized)
+        return r * self.sigmoid(self.btn_alphas)
+
+def get_attention_shapes(model, device, input_shape, attn_module):
+    shapes = []
+    def get_attention(module, input, output):
+        # shapes[module.name] = output.shape
+        shapes.append(output.detach().cpu().shape)# is tuple (output, weights) if module is nn.MultiheadAttention
+    if isinstance(attn_module, type):    
+        hook_handles = [module.register_forward_hook(get_attention) for idx, (name, module) in enumerate(model.named_modules()) if isinstance(module, attn_module)]
+    elif isinstance(attn_module, str):
+        hook_handles = [module.register_forward_hook(get_attention) for idx, (name, module) in enumerate(model.named_modules()) if attn_module in name]
+    else:
+        raise TypeError
+    
+    model(torch.randn(input_shape).to(device))
+    for handle in hook_handles:
+        handle.remove()
+    return shapes
+
+def get_bottleneck_replacement_map(model, shapes, attn_module):
+    shapes_cpy = deepcopy(shapes)
+    bottlenecks_map = {}
+    for name, module in model.named_modules():
+        if isinstance(attn_module, type): 
+            if isinstance(module, attn_module): 
+                bottlenecks_map[name] = (module, nn.Sequential(module, Bottleneck(shape=shapes_cpy.pop(0)))) # (target, replacement)
+        elif attn_module in name:
+            bottlenecks_map[name] = (module, nn.Sequential(module, Bottleneck(shape=shapes_cpy.pop(0)))) # (target, replacement)
+    assert len(shapes) == len(bottlenecks_map), "Number of bottlenecks doesn't fit the number of shapes!"
+    return bottlenecks_map 
+
+
+def replace_layer(model: nn.Module, target: nn.Module, replacement: nn.Module):
+    """
+    Replace a given module within a parent module with some third module
+    Useful for injecting new layers in an existing model.
+    ___
+
+    When invoked from _run_training method:
+     - target is a module taken from model.named_modules() that statisfies nn.Conv2d, nn.Linear, ...
+     - replacement is a Sequential that consists of the target and it's corresponding bottleneck ...
+    """
+    def replace_in(model: nn.Module, target: nn.Module, replacement: nn.Module):
+        # print("searching ", model.__class__.__name__)
+        for name, submodule in model.named_children():
+            # print("is it member?", name, submodule == target)
+            if submodule == target:
+                # we found it!
+                if isinstance(model, nn.ModuleList):
+                    # replace in module list
+                    model[name] = replacement
+
+                elif isinstance(model, nn.Sequential):
+                    # replace in sequential layer
+                    if name.isdigit():
+                        model[int(name)] = replacement
+                    else:
+                        set_module_in_model(model, name, replacement)
+                else:
+                    # replace as member
+                    model.__setattr__(name, replacement)
+
+                # print("Replaced " + target.__class__.__name__ + " with "+replacement.__class__.__name__+" in " + model.__class__.__name__)
+                return True
+
+            elif len(list(submodule.named_children())) > 0:
+                # print("Browsing {} children...".format(len(list(submodule.named_children()))))
+                if replace_in(submodule, target, replacement):
+                    return True
+        return False
+    
+    if not replace_in(model, target, replacement):
+        raise RuntimeError("Cannot substitute layer: Layer of type " + target.__class__.__name__ + " is not a child of given parent of type " + model.__class__.__name__)
+
+def freeze_all_params_except_from(model, param_name):
+    for name, param in model.named_parameters():
+        if param_name not in name:
+            param.requires_grad = False
 
 def main():
     args = parse_args()
@@ -142,12 +325,12 @@ def main():
         # build the default runner
         runner = BoostRunner.from_cfg(cfg)
     else:
-        # build customized runner from the registry
+        # build customized runner from the registry""
         # if 'runner_type' is set in the cfg
         runner = RUNNERS.build(cfg)
 
     # start training
-    runner.train()
+    runner.boost()
 
 
 if __name__ == '__main__':
