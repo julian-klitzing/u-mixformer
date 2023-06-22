@@ -17,6 +17,32 @@ from mmengine.model import is_model_wrapper
 
 from mmseg.registry import RUNNERS
 
+
+def test_weights_loading(path_ckpnt, model):
+    checkpoint = torch.load(path_ckpnt)["state_dict"]
+    state_dict = model.state_dict()
+    # state_dict = torch.load(path_init_ckpnt)
+    print("Test number parameter: ")
+    print(f"\t Loaded: {len(checkpoint)} \t Model used: {len(state_dict)}")
+    num_params_equal = 0
+    if len(checkpoint) <= len(state_dict):
+        num_params_equal = len([torch.equal(checkpoint[n].cpu(), state_dict[n].cpu()) for n in checkpoint if n in state_dict.keys()])
+    else:
+        num_params_equal = len([torch.equal(checkpoint[n].cpu(), state_dict[n].cpu()) for n in state_dict if n in checkpoint.keys()])
+    print(f"Number of equal (sets) of parameters: {num_params_equal}")
+
+def test_do_parameter_update(model):
+    state_dict = torch.load("model_init.pth")
+    print(f"Num params: {len(list(self.model.parameters()))}")
+    print(f"Num trainable params: {len([n for n, p in self.model.named_parameters() if p.requires_grad])}")
+    params_changed = [n for n, p in self.model.named_parameters() if not torch.equal(p.cpu(), state_dict[n].cpu())]
+    print(f"Num params changed: {len(params_changed)}")
+    print(f"Params changed: {params_changed}")
+    alphas_changed = [n for n in params_changed if "alpha" in n]
+    print(f"Num alphas: {len([n for n, p in self.model.named_parameters() if 'alpha' in n])}")
+    print(f"Num alphas changed: {len(alphas_changed)}")
+    print(f"Alphas changed: {alphas_changed}")
+
 @RUNNERS.register_module()
 class BoostRunner(Runner): #For boosting
     def __init__(self, *args, **kwargs):
@@ -24,6 +50,23 @@ class BoostRunner(Runner): #For boosting
         # self.model.eval() #freezing the model (just in case, please check self.model.training as False (if true, then it will be trained))
 
         print(f'here we are')
+        model = self.model
+        # # ---------------------- insert bottleneck and freeze weights --------------
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        input_shape = (1, 3, 512, 512)
+        attn_module = "proj_drop"
+        model = self.model
+        shapes = get_attention_shapes(model.backbone, device, input_shape, attn_module)
+        bottleneck_replacement_map = get_bottleneck_replacement_map(model.backbone, shapes, attn_module)
+        model(torch.randn(input_shape).to(device)) # try the forward pass on the unmodified model
+        for key, value in bottleneck_replacement_map.items():
+            # only insert in the last layer of encoder
+            if key == "layers.3.1.1.attn.proj_drop":
+                replace_layer(model.backbone, target=value[0], replacement=value[1])
+        freeze_all_params_except_from(model, param_name="btn_alphas")
+
+        self.model.to(next(self.model.parameters()).device)
+        
 
 
     def boost(self) -> nn.Module:
@@ -73,29 +116,30 @@ class BoostRunner(Runner): #For boosting
 
         # initialize the model weights
         self._init_model_weights()
+        torch.save(self.model.state_dict(), 'model_init.pth')
         # make sure checkpoint-related hooks are triggered after `before_run`
         self.load_or_resume()
+        torch.save(self.model.state_dict(), 'model_init_2.pth')
+        test_weights_loading("checkpoints/segmentation/feedformer/ade20k/B0/iter_16000_wo.pth", self.model) # "model_init.pth"
 
-        # ---------------------- insert bottleneck and freeze weights --------------
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        input_shape = (1, 3, 512, 512)
-        attn_module = "proj_drop"
-        model = self.model
-
-        shapes = get_attention_shapes(model.backbone, device, input_shape, attn_module)
-        bottleneck_replacement_map = get_bottleneck_replacement_map(model.backbone, shapes, attn_module)
-        model(torch.randn(input_shape).to(device)) # try the forward pass on the unmodified model
-        for key, value in bottleneck_replacement_map.items():
-            replace_layer(model.backbone, target=value[0], replacement=value[1])
-        freeze_all_params_except_from(model, param_name="btn_alphas")
+        # # ---------------------- insert bottleneck and freeze weights --------------
+        # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # input_shape = (1, 3, 512, 512)
+        # attn_module = "proj_drop"
+        # model = self.model
+        # shapes = get_attention_shapes(model.backbone, device, input_shape, attn_module)
+        # bottleneck_replacement_map = get_bottleneck_replacement_map(model.backbone, shapes, attn_module)
+        # model(torch.randn(input_shape).to(device)) # try the forward pass on the unmodified model
+        # for key, value in bottleneck_replacement_map.items():
+        #     replace_layer(model.backbone, target=value[0], replacement=value[1])
+        # freeze_all_params_except_from(model, param_name="btn_alphas")
+        # torch.save(model.state_dict(), 'model_init.pth')
 
         
 
         #model(torch.rand((1, 3, 256, 300), device=device))
-        torch.save(model.state_dict(), 'model_init.pth')
-    
         # model = model.to(device)
-        sum_ = summary(model, input_size=input_shape)
+        # sum_ = summary(model, input_size=input_shape)
         # ---------------------- insert bottleneck and freeze weights --------------
         
         
@@ -109,9 +153,9 @@ class BoostRunner(Runner): #For boosting
         # This must be called **AFTER** model has been wrapped.
         self._maybe_compile('train_step')
         
-        self.dummy_train()
+        # self.dummy_train()
         
-        model = self.train_loop.run()  # type: ignore
+        model = self.train_loop.run()  
         self.call_hook('after_run')
         return model
 
@@ -132,25 +176,28 @@ class BoostRunner(Runner): #For boosting
 
         num_epochs = 2
         # Training loop
-        for epoch in range(num_epochs):
-            self.model.train()  # Set the model to training mode
+        # for epoch in range(num_epochs):
+        #     self.model.train()  # Set the model to training mode
             
-            for images, labels in self.train_dataloader:
-                images = images.to(device)
-                labels = labels.to(device)                
-                # Forward pass
-                outputs = self.model(images)
-                
-                # Compute the loss
-                loss = criterion(outputs, labels)
-                
-                # Backward pass and optimization
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+            # for images, labels in self.train_dataloader:
+
+        images = torch.rand((32, 3, 512, 512), device=device)
+        labels = torch.randint(150, (32, 150, 128, 128), device=device).to(torch.float32)              
+        # Forward pass
+        outputs = self.model(images)
+        
+        # Compute the loss
+        loss = criterion(outputs, labels)
+        
+        # Backward pass and optimization
+        optimizer.zero_grad()
+        loss.backward()
+
+        optimizer.step()
             
-            # Print the loss for each epoch
-            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}")
+        # Print the loss for each epoch
+        epoch = 0
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}")
 
 
 def parse_args():
@@ -329,9 +376,8 @@ def main():
         # if 'runner_type' is set in the cfg
         runner = RUNNERS.build(cfg)
 
-    # start training
-    runner.train()
-    # runner.test()
+    # start training    
+    runner.boost()
 
 
 if __name__ == '__main__':
