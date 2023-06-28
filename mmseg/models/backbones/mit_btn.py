@@ -15,6 +15,21 @@ from mmengine.model.weight_init import (constant_init, normal_init,
 from mmseg.registry import MODELS
 from ..utils import PatchEmbed, nchw_to_nlc, nlc_to_nchw
 
+import torch.nn.functional as F
+
+class Bottleneck(nn.Module):
+
+    def __init__(self, shape):
+        super().__init__()
+        self.btn_alphas = nn.Parameter(torch.ones(shape) * torch.log(torch.tensor(0.9/(1 - 0.9))), requires_grad=True) # torch.rand(shape)
+        self.sigmoid = nn.Sigmoid() # nn.Tanh()
+
+    def forward(self, r, _):
+        # resize necessary if input image shape different from alphas initialization process
+        if r.shape[-2:] != self.btn_alphas.shape[-2:]:
+            btn_alphas_resized = F.interpolate(self.btn_alphas.unsqueeze(0), size=r.shape[1:], mode="bilinear").squeeze().to(r.device)
+            return r * self.sigmoid(btn_alphas_resized)
+        return r * self.sigmoid(self.btn_alphas)
 
 class MixFFN(BaseModule):
     """An implementation of MixFFN of Segformer.
@@ -296,7 +311,7 @@ class TransformerEncoderLayer(BaseModule):
 
 
 @MODELS.register_module()
-class MixVisionTransformer(BaseModule):
+class MixVisionTransformer_btn(BaseModule):
     """The backbone of Segformer.
 
     This backbone is the implementation of `SegFormer: Simple and
@@ -388,6 +403,8 @@ class MixVisionTransformer(BaseModule):
             for x in torch.linspace(0, drop_path_rate, sum(num_layers))
         ]  # stochastic num_layer decay rule
 
+        # self.bottleneck = Bottleneck(shape=(16384, 32))
+                                     
         cur = 0
         self.layers = ModuleList()
         for i, num_layer in enumerate(num_layers):
@@ -416,7 +433,12 @@ class MixVisionTransformer(BaseModule):
             in_channels = embed_dims_i
             # The ret[0] of build_norm_layer is norm name.
             norm = build_norm_layer(norm_cfg, embed_dims_i)[1]
-            self.layers.append(ModuleList([patch_embed, layer, norm]))
+            if i == len(num_layers) - 1:
+                bottleneck = Bottleneck(shape=(1, 224, 224))
+                layer.append(bottleneck)
+                self.layers.append(ModuleList([patch_embed, layer, norm]))
+            else:
+                self.layers.append(ModuleList([patch_embed, layer, norm])) 
             cur += num_layer
 
     def init_weights(self):
@@ -441,7 +463,9 @@ class MixVisionTransformer(BaseModule):
         for i, layer in enumerate(self.layers):
             x, hw_shape = layer[0](x)
             for block in layer[1]:
-                x = block(x, hw_shape)
+                x = block(x, hw_shape)               
+            # if i == len(self.layers) - 1:
+            #     x = self.bottleneck(x)  
             x = layer[2](x)
             x = nlc_to_nchw(x, hw_shape)
             if i in self.out_indices:

@@ -52,17 +52,18 @@ class BoostRunner(Runner): #For boosting
         print(f'here we are')
         model = self.model
         # # ---------------------- insert bottleneck and freeze weights --------------
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        input_shape = (1, 3, 512, 512)
-        attn_module = "proj_drop"
-        model = self.model
-        shapes = get_attention_shapes(model.backbone, device, input_shape, attn_module)
-        bottleneck_replacement_map = get_bottleneck_replacement_map(model.backbone, shapes, attn_module)
-        model(torch.randn(input_shape).to(device)) # try the forward pass on the unmodified model
-        for key, value in bottleneck_replacement_map.items():
-            # only insert in the last layer of encoder
-            if key == "layers.3.1.1.attn.proj_drop":
-                replace_layer(model.backbone, target=value[0], replacement=value[1])
+        # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # input_shape = (1, 3, 512, 512)
+        # attn_module = "proj_drop" #"attn.attn.out_proj"
+        # model = self.model
+        # shapes = get_attention_shapes(model.backbone, device, input_shape, attn_module)
+        # # shapes = [e[-1] for e in shapes]
+        # bottleneck_replacement_map = get_bottleneck_replacement_map(model.backbone, shapes, attn_module)
+        # model(torch.randn(input_shape).to(device)) # try the forward pass on the unmodified model
+        # for key, value in bottleneck_replacement_map.items():
+        #     # only insert in the last layer of encoder
+        #     if key == "layers.3.1.1.attn.proj_drop": # 'backbone.layers.3.1.1.attn.attn.out_proj'
+        #         replace_layer(model.backbone, target=value[0], replacement=value[1])
         freeze_all_params_except_from(model, param_name="btn_alphas")
 
         self.model.to(next(self.model.parameters()).device)
@@ -119,7 +120,7 @@ class BoostRunner(Runner): #For boosting
         torch.save(self.model.state_dict(), 'model_init.pth')
         # make sure checkpoint-related hooks are triggered after `before_run`
         self.load_or_resume()
-        torch.save(self.model.state_dict(), 'model_init_2.pth')
+        # torch.save(self.model.state_dict(), 'model_init_2.pth')
         test_weights_loading("checkpoints/segmentation/feedformer/ade20k/B0/iter_16000_wo.pth", self.model) # "model_init.pth"
 
         # # ---------------------- insert bottleneck and freeze weights --------------
@@ -244,14 +245,14 @@ class Bottleneck(nn.Module):
 
     def __init__(self, shape):
         super().__init__()
-        self.btn_alphas = nn.Parameter(torch.rand(shape), requires_grad=True)
+        self.btn_alphas = nn.Parameter(torch.ones(shape) * torch.log(torch.tensor(0.8/(1 - 0.8))), requires_grad=True) # torch.rand(shape)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, r):
         # resize necessary if input image shape different from alphas initialization process
-        # if r.shape[-2:] != self.btn_alphas.shape[-2:]:
-        #     btn_alphas_resized = F.interpolate(self.btn_alphas.unsqueeze(0), size=r.shape[1:], mode="bilinear").squeeze().to(r.device)
-        #     return r * self.sigmoid(btn_alphas_resized)
+        if r.shape[-2:] != self.btn_alphas.shape[-2:]:
+            btn_alphas_resized = F.interpolate(self.btn_alphas.unsqueeze(0), size=r.shape[1:], mode="bilinear").squeeze().to(r.device)
+            return r * self.sigmoid(btn_alphas_resized)
         return r * self.sigmoid(self.btn_alphas)
 
 def get_attention_shapes(model, device, input_shape, attn_module):
@@ -278,8 +279,10 @@ def get_bottleneck_replacement_map(model, shapes, attn_module):
         if isinstance(attn_module, type): 
             if isinstance(module, attn_module): 
                 bottlenecks_map[name] = (module, nn.Sequential(module, Bottleneck(shape=shapes_cpy.pop(0)))) # (target, replacement)
+                # bottlenecks_map[name] = (module, nn.Sequential(Bottleneck(shape=shapes_cpy.pop(0)), module))
         elif attn_module in name:
             bottlenecks_map[name] = (module, nn.Sequential(module, Bottleneck(shape=shapes_cpy.pop(0)))) # (target, replacement)
+            # bottlenecks_map[name] = (module, nn.Sequential(Bottleneck(shape=shapes_cpy.pop(0)), module))
     assert len(shapes) == len(bottlenecks_map), "Number of bottlenecks doesn't fit the number of shapes!"
     return bottlenecks_map 
 
