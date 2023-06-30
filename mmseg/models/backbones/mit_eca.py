@@ -43,25 +43,23 @@ class MixFFN(BaseModule):
                  act_cfg=dict(type='GELU'),
                  ffn_drop=0.,
                  dropout_layer=None,
-                 init_cfg=None,
-                 t_gamma = False):
+                 init_cfg=None):
         super().__init__(init_cfg)
 
         self.embed_dims = embed_dims
         self.feedforward_channels = feedforward_channels
         self.act_cfg = act_cfg
         self.activate = build_activation_layer(act_cfg)
-        self.t_gamma = t_gamma
 
         in_channels = embed_dims
-        self.fc1 = Conv2d(
+        fc1 = Conv2d(
             in_channels=in_channels,
             out_channels=feedforward_channels,
             kernel_size=1,
             stride=1,
             bias=True)
         # 3x3 depth wise conv to provide positional encode information
-        self.pe_conv = Conv2d(
+        pe_conv = Conv2d(
             in_channels=feedforward_channels,
             out_channels=feedforward_channels,
             kernel_size=3,
@@ -69,37 +67,22 @@ class MixFFN(BaseModule):
             padding=(3 - 1) // 2,
             bias=True,
             groups=feedforward_channels)
-        self.gamma = nn.Parameter(torch.ones(feedforward_channels), requires_grad=True)
-        self.fc2 = Conv2d(
+        fc2 = Conv2d(
             in_channels=feedforward_channels,
             out_channels=in_channels,
             kernel_size=1,
             stride=1,
             bias=True)
-        self.drop = nn.Dropout(ffn_drop)
-        # if t_gamma:
-        #     layers = [fc1, pe_conv*gamma, self.activate, drop, fc2, drop]
-        # else:
-        #     layers = [fc1, pe_conv, self.activate, drop, fc2, drop]
-        # self.layers = Sequential(*layers)
+        drop = nn.Dropout(ffn_drop)
+        layers = [fc1, pe_conv, self.activate, drop, fc2, drop]
+        self.layers = Sequential(*layers)
         self.dropout_layer = build_dropout(
             dropout_layer) if dropout_layer else torch.nn.Identity()
 
     def forward(self, x, hw_shape, identity=None):
         B, N, C = x.shape
         out = nlc_to_nchw(x, hw_shape)
-
-        out = self.fc1(out)
-        if self.t_gamma:
-            out = self.pe_conv(out).reshape(B, -1, hw_shape[0]*hw_shape[1]).permute(0, 2, 1) * self.gamma
-            out = out.permute(0,2,1).reshape(B, -1, hw_shape[0], hw_shape[1])
-        else:
-            out = self.pe_conv(out)
-        out = self.activate(out)
-        out = self.drop(out)
-        out = self.fc2(out)
-        out = self.drop(out)
-        # out = self.layers(out)
+        out = self.layers(out)
 
         out = nchw_to_nlc(out)
         if identity is None:
@@ -173,7 +156,11 @@ class EfficientMultiheadAttention(MultiheadAttention):
                           'future. Please upgrade your mmcv.')
             self.forward = self.legacy_forward
 
-    def forward(self, x, hw_shape, identity=None):
+        self.gamma_btn = nn.Parameter(1. * torch.ones(embed_dims), requires_grad=True)
+        self.act = nn.Sigmoid() #nn.Tanh()
+        
+
+    def forward(self, x, hw_shape, identity=None, gamma = False):
 
         x_q = x
         if self.sr_ratio > 1:
@@ -202,7 +189,10 @@ class EfficientMultiheadAttention(MultiheadAttention):
         if self.batch_first:
             out = out.transpose(0, 1)
 
-        return identity + self.dropout_layer(self.proj_drop(out))
+        if gamma:
+            return identity + self.dropout_layer(self.act(self.gamma_btn) * self.proj_drop(out))
+        else:
+            return identity + self.dropout_layer(self.proj_drop(out))
 
     def legacy_forward(self, x, hw_shape, identity=None):
         """multi head attention forward in mmcv version < 1.3.17."""
@@ -278,12 +268,18 @@ class DWConv(nn.Module):
         x = self.conv2(x)
         x = x.reshape(B, C, N).permute(0, 2, 1)
         return x
-
-class ChannelAttention(nn.Module):
-    def __init__(self, embed_dims, num_heads=8, qkv_bias=False, attn_drop=0., linear=False, drop_path=0., 
+    
+class ChannelAttention(MultiheadAttention):
+    def __init__(self, embed_dims, num_heads=8, qkv_bias=False, attn_drop=0., linear=False, drop_path=0., proj_drop=0.,
                  mlp_hidden_dim=None, act_layer=nn.GELU, drop=0., norm_layer=nn.LayerNorm, cha_sr_ratio=1, c_head_num=None, 
                  dropout_layer=None, act_cfg=None):
-        super().__init__()
+        super().__init__(embed_dims,
+            num_heads,
+            attn_drop,
+            proj_drop,
+            dropout_layer=dropout_layer,
+            bias=qkv_bias)
+        
         assert embed_dims % num_heads == 0, f"dim {embed_dims} should be divided by num_heads {num_heads}."
 
         self.embed_dims = embed_dims
@@ -300,13 +296,11 @@ class ChannelAttention(nn.Module):
             feedforward_channels=mlp_hidden_dim,
             ffn_drop=drop,
             dropout_layer=dropout_layer,
-            act_cfg=act_cfg, 
-            t_gamma=True)
+            act_cfg=act_cfg)
 
         self.norm = norm_layer(embed_dims//self.cha_sr_ratio)
 
         self.q = nn.Linear(embed_dims, embed_dims, bias=qkv_bias)
-        # self.pool = nn.AvgPool2d(pool_ratio, pool_ratio)
 
         self.attn_drop = nn.Dropout(attn_drop)
 
@@ -317,8 +311,12 @@ class ChannelAttention(nn.Module):
         k = torch.nn.functional.adaptive_avg_pool2d(k, (N, 1)).softmax(-2)
         
         attn = torch.sigmoid(q @ k)
-        return attn  * self.temperature
-    def forward(self, x, hw_shape, identity=None):
+        # return attn * self.temperature
+        return attn
+    def forward(self, x, hw_shape, identity=None, gamma = False):
+        if identity is None:
+            identity = x
+
         H, W = hw_shape[0], hw_shape[1]
         B, N, C = x.shape
         q = self.q(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
@@ -335,11 +333,12 @@ class ChannelAttention(nn.Module):
 
         repeat_time = N // attn.shape[-1]
         attn = attn.repeat_interleave(repeat_time, dim=-1) if attn.shape[-1] > 1 else attn
-        x = (attn * v.transpose(-1, -2)).permute(0, 3, 1, 2).reshape(B, N, C)
-        
-        if identity is None:
-            identity = x
-        return identity + x
+        out = (attn * v.transpose(-1, -2)).permute(0, 3, 1, 2).reshape(B, N, C)
+
+        if gamma:
+            return identity + self.dropout_layer(self.gamma2 * self.proj_drop(out))
+        else:
+            return identity + self.dropout_layer(self.proj_drop(out))
 
     @torch.jit.ignore
     def no_weight_decay(self):
@@ -414,6 +413,7 @@ class TransformerEncoderLayer(BaseModule):
             mlp_hidden_dim=feedforward_channels,
             norm_layer=nn.LayerNorm,
             cha_sr_ratio=sr_ratio,
+            proj_drop=drop_rate,
             dropout_layer=dict(type='DropPath', drop_prob=drop_path_rate),
             act_cfg=act_cfg)
         
@@ -429,8 +429,8 @@ class TransformerEncoderLayer(BaseModule):
     def forward(self, x, hw_shape):
 
         def _inner_forward(x):
-            x = self.attn(self.norm1(x), hw_shape, identity=x)
-            # x = self.c_attn(self.norm2(x), hw_shape, identity=x)    
+            x = self.attn(self.norm1(x), hw_shape, identity=x, gamma=True)
+            # x = self.c_attn(self.norm2(x), hw_shape, identity=x, gamma=True)  
             x = self.ffn(self.norm2(x), hw_shape, identity=x)
             return x
 
