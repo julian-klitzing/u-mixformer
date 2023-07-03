@@ -6,22 +6,13 @@ train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', reduce_zero_label=True),
     dict(
-        type='Resize', 
-        scale=(512, 512), 
-        keep_ratio=False),
-        # dict(
-        # type='RandomResize',
-        # scale=(2048, 512),
-        # ratio_range=(0.5, 2.0),
-        # keep_ratio=True),
-    # dict(
-        # type='RandomResize',
-        # scale=(2048, 512),
-        # ratio_range=(0.5, 2.0),
-        # keep_ratio=True),
-    # dict(type='Crop', crop_size=crop_size, cat_max_ratio=0.75),
-    # dict(type='RandomFlip', prob=0.5),
-    # dict(type='PhotoMetricDistortion'),
+        type='RandomResize',
+        scale=(2048, 512),
+        ratio_range=(0.5, 2.0),
+        keep_ratio=True),
+    dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
+    dict(type='RandomFlip', prob=0.5),
+    dict(type='PhotoMetricDistortion'),
     dict(type='PackSegInputs')
 ]
 test_pipeline = [
@@ -57,7 +48,7 @@ train_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         data_prefix=dict(
-            img_path='images/training_small', seg_map_path='annotations/training_small'), # !!! Changed to small !!!
+            img_path='images/training', seg_map_path='annotations/training'),
         pipeline=train_pipeline))
 val_dataloader = dict(
     batch_size=1,
