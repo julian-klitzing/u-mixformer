@@ -2,7 +2,8 @@ _base_ = [
     '../../_base_/models/segformer_mit-b0.py', '../../_base_/datasets/ade20k.py',
     '../../_base_/default_runtime.py', '../../_base_/schedules/schedule_160k.py'
 ]
-#load_from = "checkpoints/segmentation/feedformer/ade20k/B0/iter_16000_wo.pth"
+
+
 crop_size = (512, 512)
 data_preprocessor = dict(size=crop_size)
 model = dict(
