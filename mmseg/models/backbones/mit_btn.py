@@ -434,7 +434,7 @@ class MixVisionTransformer_btn(BaseModule):
             # The ret[0] of build_norm_layer is norm name.
             norm = build_norm_layer(norm_cfg, embed_dims_i)[1]
             if i == len(num_layers) - 1:
-                bottleneck = Bottleneck(shape=(1, 224, 224))
+                bottleneck = Bottleneck(shape=(1, 256, 256))
                 layer.append(bottleneck)
                 self.layers.append(ModuleList([patch_embed, layer, norm]))
             else:
