@@ -1,9 +1,9 @@
 _base_ = [
-    '../../_base_/models/segformer_mit-b0.py', '../../_base_/datasets/ade20k.py',
+    '../../_base_/models/segformer_mit-b0.py', '../../_base_/datasets/ade20k.py', #'../../_base_/models/segformer_mit-b0_new.py'
     '../../_base_/default_runtime.py', '../../_base_/schedules/schedule_160k.py'
 ]
-
-
+#load_from = "checkpoints/segmentation/feedformer/ade20k/B0/iter_16000_wo.pth"
+randomness = dict(seed=0) #seed setup
 crop_size = (512, 512)
 data_preprocessor = dict(size=crop_size)
 model = dict(
@@ -35,7 +35,7 @@ param_scheduler = [
     dict(
         type='LinearLR', start_factor=1e-6, by_epoch=False, begin=0, end=1500),
     dict(
-        type='PolyLR',
+        type='PolyLR', #check CosineAnnealingLR: https://github.com/open-mmlab/mmengine/blob/04b0ffee76c41d10c5fd1f737cdc5306af365754/mmengine/optim/scheduler/lr_scheduler.py#L48
         eta_min=0.0,
         power=1.0,
         begin=1500,
@@ -43,6 +43,6 @@ param_scheduler = [
         by_epoch=False,
     )
 ]
-train_dataloader = dict(batch_size=32, num_workers=4)
-val_dataloader = dict(batch_size=1, num_workers=4)
+train_dataloader = dict(batch_size=16, num_workers=4)
+val_dataloader = dict(batch_size=2, num_workers=4)
 test_dataloader = val_dataloader

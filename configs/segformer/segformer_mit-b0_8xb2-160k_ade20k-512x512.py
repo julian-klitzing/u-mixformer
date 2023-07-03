@@ -2,11 +2,15 @@ _base_ = [
     '../_base_/models/segformer_mit-b0.py', '../_base_/datasets/ade20k.py',
     '../_base_/default_runtime.py', '../_base_/schedules/schedule_160k.py'
 ]
+# load_from = "checkpoints/segmentation/segformer/segformer_mit-b0_512x512_160k_ade20k_20210726_101530-8ffa8fda.pth" # to initialize entire model with pretrained weights
+randomness = dict(seed=0) #seed setup
+
 crop_size = (512, 512)
 data_preprocessor = dict(size=crop_size)
 model = dict(
     data_preprocessor=data_preprocessor,
-    pretrained='checkpoints/classification/mit_b0.pth',
+    backbone=dict(type='MixVisionTransformer'),
+    pretrained='checkpoints/classification/mit_b0.pth', # only initalizes backbone
     decode_head=dict(num_classes=150))
 
 optim_wrapper = dict(

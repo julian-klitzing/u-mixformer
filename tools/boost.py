@@ -64,7 +64,7 @@ class BoostRunner(Runner): #For boosting
         #     # only insert in the last layer of encoder
         #     if key == "layers.3.1.1.attn.proj_drop": # 'backbone.layers.3.1.1.attn.attn.out_proj'
         #         replace_layer(model.backbone, target=value[0], replacement=value[1])
-        freeze_all_params_except_from(model, param_name="btn_alphas")
+        freeze_all_params_except_from(model, param_name="gamma_btn") #find name that you dont want to freeze
 
         self.model.to(next(self.model.parameters()).device)
         
