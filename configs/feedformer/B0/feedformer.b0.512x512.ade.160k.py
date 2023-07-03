@@ -4,6 +4,7 @@ _base_ = [
 ]
 #load_from = "checkpoints/segmentation/feedformer/ade20k/B0/iter_16000_wo.pth"
 randomness = dict(seed=0) #seed setup
+find_unused_parameters = True #find it in mmcv
 crop_size = (512, 512)
 data_preprocessor = dict(size=crop_size)
 model = dict(
@@ -44,5 +45,5 @@ param_scheduler = [
     )
 ]
 train_dataloader = dict(batch_size=16, num_workers=4)
-val_dataloader = dict(batch_size=2, num_workers=4)
+val_dataloader = dict(batch_size=1, num_workers=4)
 test_dataloader = val_dataloader
