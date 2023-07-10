@@ -130,6 +130,128 @@ class CrossAttention(nn.Module):
 
         return x
 
+class MultiCrossAttention(nn.Module):
+    def __init__(self, dim1, dim2, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., pool_ratio=16):
+        super().__init__()
+        assert dim1 % num_heads == 0, f"dim {dim1} should be divided by num_heads {num_heads}."
+
+        self.dim1 = dim1
+        self.dim2 = dim2
+        self.num_heads = num_heads
+        head_dim = dim1 // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
+
+        self.q = nn.Linear(dim1, dim1, bias=qkv_bias)
+        self.kv = nn.Linear(sum(dim2) + dim1, dim1 * 2, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim1, dim1)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        self.pool1 = nn.AvgPool2d(pool_ratio[0], pool_ratio[0])
+        self.pool2 = nn.AvgPool2d(pool_ratio[1], pool_ratio[1])
+        self.pool3 = nn.AvgPool2d(pool_ratio[2], pool_ratio[2])
+        self.sr1 = nn.Conv2d(dim2[0], dim2[0], kernel_size=1, stride=1)
+        self.sr2 = nn.Conv2d(dim2[1], dim2[1], kernel_size=1, stride=1)
+        self.sr3 = nn.Conv2d(dim2[2], dim2[2], kernel_size=1, stride=1)
+        self.norm1 = nn.LayerNorm(dim2[0])
+        self.norm2 = nn.LayerNorm(dim2[1])
+        self.norm3 = nn.LayerNorm(dim2[2])
+        self.norm4 = nn.LayerNorm(dim1)
+        self.act = nn.GELU()
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x, y, H2, W2):
+        B1, N1, C1 = x.shape
+        B2_1, N2_1, C2_1 = y[0].shape
+        B2_2, N2_2, C2_2 = y[1].shape
+        B2_3, N2_3, C2_3 = y[2].shape
+        q = self.q(x).reshape(B1, N1, self.num_heads, C1 // self.num_heads).permute(0, 2, 1, 3)
+
+        x_1 = y[0].permute(0, 2, 1).reshape(B2_1, C2_1, H2[0], W2[0])
+        x_1 = self.sr1(self.pool1(x_1)).reshape(B2_1, C2_1, -1).permute(0, 2, 1)
+        x_1 = self.norm1(x_1)
+        x_1 = self.act(x_1)
+        x_2 = y[1].permute(0, 2, 1).reshape(B2_2, C2_2, H2[1], W2[1])
+        x_2 = self.sr2(self.pool2(x_2)).reshape(B2_2, C2_2, -1).permute(0, 2, 1)
+        x_2 = self.norm2(x_2)
+        x_2 = self.act(x_2)
+        x_3 = y[2].permute(0, 2, 1).reshape(B2_3, C2_3, H2[2], W2[2])
+        x_3 = self.sr3(self.pool3(x_3)).reshape(B2_3, C2_3, -1).permute(0, 2, 1)
+        x_3 = self.norm3(x_3)
+        x_3 = self.act(x_3)
+        x_4 = self.norm4(x)
+        x_4 = self.act(x_4)
+
+        x_ = torch.cat([x_1, x_2, x_3, x_4], dim=2)
+        kv = self.kv(x_).reshape(B1, -1, 2, self.num_heads, C1 // self.num_heads).permute(2, 0, 3, 1, 4) #여기에다가 rollout을 넣는다면?
+        k, v = kv[0], kv[1]
+
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B1, N1, C1)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+
+        return x
+
+class MultiBlock(nn.Module):
+
+    def __init__(self, dim1, dim2, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, pool_ratio=16):
+        super().__init__()
+        ##
+
+        self.attn = MultiCrossAttention(dim1=dim1, dim2=dim2, num_heads=num_heads, pool_ratio=pool_ratio)
+
+        self.norm1 = norm_layer(dim1)
+        self.norm2_1, self.norm2_2, self.norm2_3 = norm_layer(dim2[0]), norm_layer(dim2[1]), norm_layer(dim2[2])
+        self.norm3 = norm_layer(dim1)
+
+        # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        mlp_hidden_dim = int(dim1 * mlp_ratio)
+        self.mlp = Mlp(in_features=dim1, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x, y, H2, H1):
+        x = x + self.drop_path(self.attn(self.norm1(x), [self.norm2_1(y[0]), self.norm2_2(y[1]), self.norm2_3(y[2])], H2, H2)) #self.norm2(y)이 F1에 대한 값
+        x = x + self.drop_path(self.mlp(self.norm3(x), H1, H1))
+
+        return x
+
 class Block(nn.Module):
 
     def __init__(self, dim1, dim2, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
@@ -261,9 +383,14 @@ class FeedFormerHead_cc(BaseDecodeHead):
                                 drop_path=0.1, pool_ratio=4)
         self.attn_c2_c1 = Block(dim1=c2_in_channels, dim2=c1_in_channels, num_heads=2, mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=2)
+        
+        self.attn_c4_c123 = MultiBlock(dim1= c4_in_channels, dim2=[c1_in_channels, c2_in_channels, c3_in_channels], num_heads= 8, mlp_ratio=4,
+                        drop_path=0.1, pool_ratio=[8, 4, 2])
+        # self.attn_c3_c124 = MultiBlock(dim1= c3_in_channels, dim2=[c1_in_channels, c2_in_channels, c4_in_channels], num_heads= 5, mlp_ratio=4,
+        #                 drop_path=0.1, pool_ratio=[8, 4, 2])
 
         self.linear_fuse = ConvModule(
-            in_channels=(c1_in_channels + c2_in_channels * 2 + c3_in_channels * 2 + c4_in_channels * 2),
+            in_channels=(c1_in_channels + c2_in_channels + c3_in_channels + c4_in_channels),
             out_channels=embedding_dim,
             kernel_size=1,
             norm_cfg=dict(type='SyncBN', requires_grad=True)
@@ -286,36 +413,41 @@ class FeedFormerHead_cc(BaseDecodeHead):
         c3 = c3.flatten(2).transpose(1, 2)
         c4 = c4.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, patches]
 
-        _c4 = self.attn_c4_c1(c4, c1, h1, w1, h4, w4)
-        _c4 += c4
+        _c4 = self.attn_c4_c123(c4, [c1, c2, c3], [h1, h2, h3], h4)
+        # _c3 = self.attn_c3_c124(c3, [c1, c2, c4], [h1, h2, h4], h3)
+
+        # _c4 = self.attn_c4_c1(c4, c1, h1, w1, h4, w4)
+        # _c4 += c4
         _c4 = _c4.permute(0,2,1).reshape(n, -1, h4, w4)
         _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
 
         _c3 = self.attn_c3_c1(c3, c1, h1, w1, h3, w3)
-        _c3 += c3
+        # _c3 += c3
         _c3 = _c3.permute(0,2,1).reshape(n, -1, h3, w3)
         _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
 
         _c2 = self.attn_c2_c1(c2, c1, h1, w1, h2, w2)
-        _c2 += c2
+        # _c2 += c2
         _c2 = _c2.permute(0,2,1).reshape(n, -1, h2, w2)
         _c2 = resize(_c2, size=(h1, w1), mode='bilinear', align_corners=False)
 
         _c1 = c1.permute(0, 2, 1).reshape(n, -1, h1, w1)
 
-        ############### Concatenation (on Saturday)
-
-        c4 = c4.permute(0,2,1).reshape(n, -1, h4, w4)
-        c4 = resize(c4, size=(h1,w1), mode='bilinear', align_corners=False)
-        c3 = c3.permute(0,2,1).reshape(n, -1, h3, w3)
-        c3 = resize(c3, size=(h1,w1), mode='bilinear', align_corners=False)
-        c2 = c2.permute(0,2,1).reshape(n, -1, h2, w2)
-        c2 = resize(c2, size=(h1,w1), mode='bilinear', align_corners=False)
-        
-        _c = self.linear_fuse(torch.cat([_c4, c4, _c3, c3, _c2, c2, _c1], dim=1))
-        ################
+        _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
 
         x = self.dropout(_c)
         x = self.linear_pred(x)
+
+        ############### Concatenation (on Saturday)
+
+        # c4 = c4.permute(0,2,1).reshape(n, -1, h4, w4)
+        # c4 = resize(c4, size=(h1,w1), mode='bilinear', align_corners=False)
+        # c3 = c3.permute(0,2,1).reshape(n, -1, h3, w3)
+        # c3 = resize(c3, size=(h1,w1), mode='bilinear', align_corners=False)
+        # c2 = c2.permute(0,2,1).reshape(n, -1, h2, w2)
+        # c2 = resize(c2, size=(h1,w1), mode='bilinear', align_corners=False)
+        
+        # _c = self.linear_fuse(torch.cat([_c4, c4, _c3, c3, _c2, c2, _c1], dim=1))
+        ################
 
         return x
