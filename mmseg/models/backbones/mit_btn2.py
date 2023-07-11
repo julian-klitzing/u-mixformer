@@ -26,9 +26,9 @@ class Bottleneck(nn.Module):
 
     def forward(self, r, _):
         # resize necessary if input image shape different from alphas initialization process
-        if r.shape[-2:] != self.btn_alphas.shape[-2:]:
-            btn_alphas_resized = F.interpolate(self.btn_alphas.unsqueeze(0), size=r.shape[1:], mode="bilinear").squeeze().to(r.device)
-            return r * self.sigmoid(btn_alphas_resized)
+        # if r.shape[-2:] != self.btn_alphas.shape[-2:]:
+        #     btn_alphas_resized = F.interpolate(self.btn_alphas.unsqueeze(0), size=r.shape[1:], mode="bilinear").squeeze().to(r.device)
+        #     return r * self.sigmoid(btn_alphas_resized)
         return r * self.sigmoid(self.btn_alphas)
 
 class MixFFN(BaseModule):
@@ -311,7 +311,7 @@ class TransformerEncoderLayer(BaseModule):
 
 
 @MODELS.register_module()
-class MixVisionTransformer_btn(BaseModule):
+class MixVisionTransformer_btn2(BaseModule):
     """The backbone of Segformer.
 
     This backbone is the implementation of `SegFormer: Simple and
@@ -439,7 +439,7 @@ class MixVisionTransformer_btn(BaseModule):
             #     self.layers.append(ModuleList([patch_embed, layer, norm]))
             # else:
             #     self.layers.append(ModuleList([patch_embed, layer, norm]))
-            bottleneck = Bottleneck(shape=(1, embed_dims_i))
+            bottleneck = Bottleneck(shape=(embed_dims_i)) # (1, embed_dims_i)
             layer.append(bottleneck)
             self.layers.append(ModuleList([patch_embed, layer, norm]))  
             cur += num_layer
