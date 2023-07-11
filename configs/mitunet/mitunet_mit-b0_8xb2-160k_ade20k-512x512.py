@@ -19,7 +19,7 @@ model = dict(
         # Extra attribute (dict) with default config from paper (probably won't fit in here!),
         in_channels=[32, 64, 160, 256],
         in_index=[0, 1, 2, 3],
-        channels=256,
+        channels=16, # num channels of very last features before #classes get predicted
         dropout_ratio=0.1,
         num_classes=150,
         norm_cfg=norm_cfg,
@@ -51,10 +51,10 @@ param_scheduler = [
         by_epoch=False,
     )
 ]
-train_dataloader = dict(batch_size=2, num_workers=4)
+train_dataloader = dict(batch_size=16, num_workers=4)
 val_dataloader = dict(batch_size=1, num_workers=4)
 test_dataloader = val_dataloader
 
 # ---- Reduce val_interval to see if val works
 train_cfg = dict(
-    type='IterBasedTrainLoop', max_iters=160000, val_interval=100)
+    type='IterBasedTrainLoop', max_iters=160000, val_interval=16000)
