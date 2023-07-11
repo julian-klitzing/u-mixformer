@@ -21,9 +21,7 @@ model = dict(
 optim_wrapper = dict(
     _delete_=True,
     type='OptimWrapper',
-    optimizer=dict(type='Adam', lr=3e-4, weight_decay=0),
-        # type='AdamW', lr=0.00006, betas=(0.9, 0.999), weight_decay=0.01),
-       
+    optimizer=dict(type='Adam', lr=3e-4, weight_decay=0),       
     paramwise_cfg=dict(
         custom_keys={
             'pos_block': dict(decay_mult=0.),
