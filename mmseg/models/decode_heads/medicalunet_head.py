@@ -141,6 +141,8 @@ class MedicalUNetHead(BaseDecodeHead): # nn.Module
             skip = hidden_states[i]
             decoder_block = self.blocks[i]
             x = decoder_block(x, skip=skip)
+        
+        x = self.cls_seg(x)
         return x
 
 
