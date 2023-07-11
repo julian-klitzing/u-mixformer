@@ -11,14 +11,17 @@ model = dict(
     data_preprocessor=data_preprocessor,
     pretrained='checkpoints/classification/mit_b0.pth',
     decode_head=dict(
-        type='FeedFormerHead',
+        type='FeedFormerHead_new',
         feature_strides=[4, 8, 16, 32],
         # in_channels=[32, 64, 160, 256],
         # in_index=[0, 1, 2, 3],
         # channels=128,
-        num_classes=150
+        num_classes=150,
+        loss_decode=[
+            dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
+            dict(type='KLLoss', loss_weight=0.1)
+        ])
     )
-)
 
 optim_wrapper = dict(
     _delete_=True,

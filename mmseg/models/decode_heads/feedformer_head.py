@@ -17,6 +17,11 @@ import attr
 import math
 from timm.models.layers import DropPath, trunc_normal_
 
+from typing import List, Tuple
+from mmseg.utils import ConfigType, SampleList
+from torch import Tensor
+from ..losses import accuracy
+
 from IPython import embed
 
 
@@ -451,3 +456,212 @@ class FeedFormerHead_cc(BaseDecodeHead):
         ################
 
         return x
+
+
+class DeepVIB(nn.Module):
+    def __init__(self, z_dim):
+        """
+        Deep VIB Model.
+
+        Arguments:
+        ----------
+        input_shape : `int`
+            Flattened size of image. (Default=784)
+        output_shape : `int`
+            Number of classes. (Default=10)
+        z_dim : `int`
+            The dimension of the latent variable z. (Default=256)
+        """
+        super(DeepVIB, self).__init__()
+        self.z_dim  = z_dim
+
+        # build encoder
+        self.fc_mu  = nn.Linear(256, self.z_dim)
+        self.fc_std = nn.Linear(256, self.z_dim)
+
+    def reparameterise(self, mu, std):
+        """
+        mu : [batch_size,z_dim]
+        std : [batch_size,z_dim]
+        """
+        # get epsilon from standard normal
+        eps = torch.randn_like(std)
+        return mu + std*eps
+
+    def forward(self, x):
+        """
+        Forward pass
+
+        Parameters:
+        -----------
+        x : [batch_size,28,28]
+        """
+        # flattent image
+        mu, std = self.fc_mu(x), F.softplus(self.fc_std(x), beta=1)
+        encoder_out = self.reparameterise(mu, std) # sample latent based on encoder outputs
+        return encoder_out, mu, std
+    
+@MODELS.register_module()
+class FeedFormerHead_new(BaseDecodeHead):
+    """
+    SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers
+    """
+    def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
+        super(FeedFormerHead_new, self).__init__(input_transform='multiple_select', **kwargs)
+        assert len(feature_strides) == len(self.in_channels)
+        assert min(feature_strides) == feature_strides[0]
+        self.feature_strides = feature_strides
+        # Hyperparameters
+        beta   = 1e-3
+        z_dim  = 256
+        epochs = 200
+        batch_size = 128
+        learning_rate = 1e-4
+        decay_rate = 0.97
+
+        c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
+
+        embedding_dim = 128
+
+        self.VIB = DeepVIB(z_dim = z_dim)
+
+        self.attn_c4_c1 = Block(dim1=c4_in_channels, dim2=c1_in_channels, num_heads=8, mlp_ratio=4,
+                                drop_path=0.1, pool_ratio=8)
+        self.attn_c3_c1 = Block(dim1=c3_in_channels, dim2=c1_in_channels, num_heads=5, mlp_ratio=4,
+                                drop_path=0.1, pool_ratio=4)
+        self.attn_c2_c1 = Block(dim1=c2_in_channels, dim2=c1_in_channels, num_heads=2, mlp_ratio=4,
+                                drop_path=0.1, pool_ratio=2)
+
+        self.linear_fuse = ConvModule(
+            in_channels=(c1_in_channels + c2_in_channels + c3_in_channels + c4_in_channels),
+            out_channels=embedding_dim,
+            kernel_size=1,
+            norm_cfg=dict(type='SyncBN', requires_grad=True)
+        )
+
+        self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
+
+    def forward(self, inputs):
+        x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
+        c1, c2, c3, c4 = x
+
+        ############## MLP decoder on C1-C4 ###########
+        n, _, h4, w4 = c4.shape
+        _, _, h3, w3 = c3.shape
+        _, _, h2, w2 = c2.shape
+        _, _, h1, w1 = c1.shape
+
+        c1 = c1.flatten(2).transpose(1, 2)
+        c2 = c2.flatten(2).transpose(1, 2)
+        c3 = c3.flatten(2).transpose(1, 2)
+        c4 = c4.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, patches]
+
+        c4_out, mu, std = self.VIB(c4)
+
+        _c4 = self.attn_c4_c1(c4, c1, h1, w1, h4, w4)
+        # _c4 += c4
+        _c4 = _c4.permute(0,2,1).reshape(n, -1, h4, w4)
+        _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
+
+        _c3 = self.attn_c3_c1(c3, c1, h1, w1, h3, w3)
+        # _c3 += c3
+        _c3 = _c3.permute(0,2,1).reshape(n, -1, h3, w3)
+        _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
+
+        _c2 = self.attn_c2_c1(c2, c1, h1, w1, h2, w2)
+        # _c2 += c2
+        _c2 = _c2.permute(0,2,1).reshape(n, -1, h2, w2)
+        _c2 = resize(_c2, size=(h1, w1), mode='bilinear', align_corners=False)
+
+        _c1 = c1.permute(0, 2, 1).reshape(n, -1, h1, w1)
+
+        _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
+
+        x = self.dropout(_c)
+        x = self.linear_pred(x)
+
+        return x, mu, std
+    
+    def loss(self, inputs: Tuple[Tensor], batch_data_samples: SampleList,
+             train_cfg: ConfigType) -> dict:
+        """Forward function for training.
+
+        Args:
+            inputs (Tuple[Tensor]): List of multi-level img features.
+            batch_data_samples (list[:obj:`SegDataSample`]): The seg
+                data samples. It usually includes information such
+                as `img_metas` or `gt_semantic_seg`.
+            train_cfg (dict): The training config.
+
+        Returns:
+            dict[str, Tensor]: a dictionary of loss components
+        """
+        seg_logits, mu, std = self.forward(inputs)
+        losses = self.loss_by_feat(seg_logits, batch_data_samples, mu, std)
+        return losses
+
+    def loss_by_feat(self, seg_logits: Tensor,
+                     batch_data_samples: SampleList, mu, std) -> dict:
+        """Compute segmentation loss.
+
+        Args:
+            seg_logits (Tensor): The output from decode head forward function.
+            batch_data_samples (List[:obj:`SegDataSample`]): The seg
+                data samples. It usually includes information such
+                as `metainfo` and `gt_sem_seg`.
+
+        Returns:
+            dict[str, Tensor]: a dictionary of loss components
+        """
+
+        seg_label = self._stack_batch_gt(batch_data_samples)
+        loss = dict()
+        seg_logits = resize(
+            input=seg_logits,
+            size=seg_label.shape[2:],
+            mode='bilinear',
+            align_corners=self.align_corners)
+        if self.sampler is not None:
+            seg_weight = self.sampler.sample(seg_logits, seg_label)
+        else:
+            seg_weight = None
+        seg_label = seg_label.squeeze(1)
+
+        if not isinstance(self.loss_decode, nn.ModuleList):
+            losses_decode = [self.loss_decode]
+        else:
+            losses_decode = self.loss_decode
+        for loss_decode in losses_decode:
+            if loss_decode.loss_name not in loss:
+                if loss_decode.loss_name == 'loss_kl':
+                    loss[loss_decode.loss_name] = loss_decode(
+                        seg_logits,
+                        seg_label,
+                        mu, std,
+                        weight=seg_weight,
+                        ignore_index=self.ignore_index)
+                else: #cross entropy
+                    loss[loss_decode.loss_name] = loss_decode(
+                        seg_logits,
+                        seg_label,
+                        weight=seg_weight,
+                        ignore_index=self.ignore_index)
+            else:
+                if loss_decode.loss_name == 'loss_kl':
+                    loss[loss_decode.loss_name] += loss_decode(
+                        seg_logits,
+                        seg_label,
+                        mu, std,
+                        weight=seg_weight,
+                        ignore_index=self.ignore_index)
+                else:
+                    loss[loss_decode.loss_name] += loss_decode(
+                        seg_logits,
+                        seg_label,
+                        weight=seg_weight,
+                        ignore_index=self.ignore_index)
+                    
+
+        loss['acc_seg'] = accuracy(
+            seg_logits, seg_label, ignore_index=self.ignore_index)
+        return loss
