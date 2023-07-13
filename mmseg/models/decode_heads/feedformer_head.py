@@ -21,6 +21,7 @@ from typing import List, Tuple
 from mmseg.utils import ConfigType, SampleList
 from torch import Tensor
 from ..losses import accuracy
+from numbers import Number
 
 from IPython import embed
 
@@ -487,6 +488,23 @@ class DeepVIB(nn.Module):
         # get epsilon from standard normal
         eps = torch.randn_like(std)
         return mu + std*eps
+    
+    def reparametrize_n(self, mu, std, n=1):
+        # reference :
+        # http://pytorch.org/docs/0.3.1/_modules/torch/distributions.html#Distribution.sample_n
+        def expand(v):
+            if isinstance(v, Number):
+                return torch.Tensor([v]).expand(n, 1)
+            else:
+                return v.expand(n, *v.size())
+
+        if n != 1 :
+            mu = expand(mu)
+            std = expand(std)
+
+        eps = std.data.new(std.size()).normal_().cuda()
+
+        return mu + eps * std
 
     def forward(self, x):
         """
@@ -497,8 +515,9 @@ class DeepVIB(nn.Module):
         x : [batch_size,28,28]
         """
         # flattent image
-        mu, std = self.fc_mu(x), F.softplus(self.fc_std(x), beta=1)
-        encoder_out = self.reparameterise(mu, std) # sample latent based on encoder outputs
+        mu, std = x, F.softplus(x, beta=1)
+        encoder_out = self.reparametrize_n(mu, std) # sample latent based on encoder outputs
+        # encoder_out = self.reparameterise(mu, std) # sample latent based on encoder outputs
         return encoder_out, mu, std
     
 @MODELS.register_module()
@@ -539,7 +558,9 @@ class FeedFormerHead_new(BaseDecodeHead):
             norm_cfg=dict(type='SyncBN', requires_grad=True)
         )
 
+        self.se = SELayer(embedding_dim)
         self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
+        
 
     def forward(self, inputs):
         x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
@@ -556,31 +577,48 @@ class FeedFormerHead_new(BaseDecodeHead):
         c3 = c3.flatten(2).transpose(1, 2)
         c4 = c4.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, patches]
 
-        c4_out, mu, std = self.VIB(c4)
-
-        _c4 = self.attn_c4_c1(c4, c1, h1, w1, h4, w4)
+        # c4_out, mu, std = self.VIB(c4)
         # _c4 += c4
-        _c4 = _c4.permute(0,2,1).reshape(n, -1, h4, w4)
+        _c4 = c4.permute(0,2,1).reshape(n, -1, h4, w4)
         _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
 
-        _c3 = self.attn_c3_c1(c3, c1, h1, w1, h3, w3)
         # _c3 += c3
-        _c3 = _c3.permute(0,2,1).reshape(n, -1, h3, w3)
+        _c3 = c3.permute(0,2,1).reshape(n, -1, h3, w3)
         _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
 
-        _c2 = self.attn_c2_c1(c2, c1, h1, w1, h2, w2)
         # _c2 += c2
-        _c2 = _c2.permute(0,2,1).reshape(n, -1, h2, w2)
+        _c2 = c2.permute(0,2,1).reshape(n, -1, h2, w2)
         _c2 = resize(_c2, size=(h1, w1), mode='bilinear', align_corners=False)
 
         _c1 = c1.permute(0, 2, 1).reshape(n, -1, h1, w1)
 
         _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
+        
+        _c = self.se(_c)
+
+        # _c4 = self.attn_c4_c1(c4_out, c1, h1, w1, h4, w4)
+        # # _c4 += c4
+        # _c4 = _c4.permute(0,2,1).reshape(n, -1, h4, w4)
+        # _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
+
+        # _c3 = self.attn_c3_c1(c3, c1, h1, w1, h3, w3)
+        # # _c3 += c3
+        # _c3 = _c3.permute(0,2,1).reshape(n, -1, h3, w3)
+        # _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
+
+        # _c2 = self.attn_c2_c1(c2, c1, h1, w1, h2, w2)
+        # # _c2 += c2
+        # _c2 = _c2.permute(0,2,1).reshape(n, -1, h2, w2)
+        # _c2 = resize(_c2, size=(h1, w1), mode='bilinear', align_corners=False)
+
+        # _c1 = c1.permute(0, 2, 1).reshape(n, -1, h1, w1)
+
+        # _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
 
         x = self.dropout(_c)
         x = self.linear_pred(x)
 
-        return x, mu, std
+        return x, _, _
     
     def loss(self, inputs: Tuple[Tensor], batch_data_samples: SampleList,
              train_cfg: ConfigType) -> dict:

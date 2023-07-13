@@ -4,6 +4,7 @@ import warnings
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 from mmseg.registry import MODELS
 from .utils import get_class_weight, weight_reduce_loss
@@ -40,7 +41,8 @@ def kl_divergence(pred,
             `New in version 0.23.0.`
     """
     beta = 1e-3
-    loss = 0.5 * torch.sum(mu.pow(2) + std.pow(2) - 2*std.log() - 1)
+    # loss = 0.5 * torch.sum(mu.pow(2) + std.pow(2) - 2*std.log() - 1)
+    loss = -0.5*(1+2*std.log()-mu.pow(2)-std.pow(2)).sum(1).mean().div(math.log(2))
     # # class_weight is a manual rescaling weight given to each class.
     # # If given, has to be a Tensor of size C element-wise losses
     # loss = F.kl_div(
