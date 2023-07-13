@@ -34,6 +34,7 @@ from .stdc_head import STDCHead
 from .uper_head import UPerHead
 from .feedformer_head import FeedFormerHead
 from .medicalunet_head import MedicalUNetHead
+from .caunet_head import CrossAttentionUNetHead
 
 __all__ = [
     'FCNHead', 'PSPHead', 'ASPPHead', 'PSAHead', 'NLHead', 'GCHead', 'CCHead',
@@ -43,5 +44,5 @@ __all__ = [
     'SETRMLAHead', 'DPTHead', 'SETRMLAHead', 'SegmenterMaskTransformerHead',
     'SegformerHead', 'ISAHead', 'STDCHead', 'IterativeDecodeHead',
     'KernelUpdateHead', 'KernelUpdator', 'MaskFormerHead', 'Mask2FormerHead',
-    'LightHamHead', 'PIDHead', 'FeedFormerHead', 'MedicalUNetHead' # new
+    'LightHamHead', 'PIDHead', 'FeedFormerHead', 'MedicalUNetHead', "CrossAttentionUNetHead" # new
 ]
