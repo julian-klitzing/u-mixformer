@@ -11,7 +11,7 @@ model = dict(
     data_preprocessor=data_preprocessor,
     pretrained='checkpoints/classification/mit_b0.pth',
     decode_head=dict(
-        type='FeedFormerHead_new',
+        type='FeedFormerHead32',  #FeedFormerHeadUNet
         feature_strides=[4, 8, 16, 32],
         # in_channels=[32, 64, 160, 256],
         # in_index=[0, 1, 2, 3],
@@ -19,7 +19,7 @@ model = dict(
         num_classes=150,
         loss_decode=[
             dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-            dict(type='KLLoss', loss_weight=0.1)
+            # dict(type='KLLoss', loss_weight=0.1)
         ])
     )
 
