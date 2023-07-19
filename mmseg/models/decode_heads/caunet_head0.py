@@ -23,8 +23,8 @@ import torch.nn.functional as F
 from IPython import embed
 
 """
-CrossAttentionHead does upsampling on H, W at each stage and "upsampling" channels (by dimension of linear projection for kv - FeedF style).
---> Forward/Backward size for (1, 3, 512, 512) is 900.73MB ... (memory intensive)
+CrossAttentionHead does upsampling on H, W at each stage but downamples channels (by dimension of linear projection for queries).
+--> Forward/Backward size for (1, 3, 512, 512) is 900.73MB ...
 """
 
 class DWConv(nn.Module):
@@ -183,12 +183,12 @@ class Block(nn.Module):
         return x
 
 @MODELS.register_module()
-class CrossAttentionUNetHead(BaseDecodeHead):
+class CrossAttentionUNetHead0(BaseDecodeHead):
     """
     SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers
     """
     def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
-        super(CrossAttentionUNetHead, self).__init__(input_transform='multiple_select', **kwargs)
+        super(CrossAttentionUNetHead0, self).__init__(input_transform='multiple_select', **kwargs)
         assert len(feature_strides) == len(self.in_channels)
         assert min(feature_strides) == feature_strides[0]
         self.feature_strides = feature_strides

@@ -23,9 +23,10 @@ import torch.nn.functional as F
 from IPython import embed
 
 """
-CrossAttentionHead does upsampling on H, W at each stage and "upsampling" channels (by dimension of linear projection for kv - FeedF style).
---> Forward/Backward size for (1, 3, 512, 512) is 900.73MB ... (memory intensive)
+CrossAttentionHead2 does upsampling on H, W at each stage but downamples channels (by dimension of linear projection for queries).
+--> Forward/Backward size for (1, 3, 512, 512) is  434.9MB ...
 """
+
 
 class DWConv(nn.Module):
     def __init__(self, dim=768):
@@ -88,10 +89,15 @@ class CrossAttention(nn.Module):
         head_dim = dim1 // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
-        self.q = nn.Linear(dim1, dim1, bias=qkv_bias)
-        self.kv = nn.Linear(dim2, dim1 * 2, bias=qkv_bias)
+        # ----- Change now that Q gets compressed to smaller size
+        # self.q = nn.Linear(dim1, dim1, bias=qkv_bias)
+        # self.kv = nn.Linear(dim2, dim1 * 2, bias=qkv_bias)
+
+        self.q = nn.Linear(dim1, dim2, bias=qkv_bias) # Changed from dim1, dim1 to dim1, dim2
+        self.kv = nn.Linear(dim2, dim2 * 2, bias=qkv_bias) # Changed from dim2, dim1 * 2 to dim2, dim2 * 2
+        
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim1, dim1)
+        self.proj = nn.Linear(dim2, dim2) # Changed from dim1, dim1 to dim2, dim2
         self.proj_drop = nn.Dropout(proj_drop)
 
         # self.pool = nn.AvgPool2d(pool_ratio, pool_ratio)
@@ -118,7 +124,7 @@ class CrossAttention(nn.Module):
     def forward(self, x, y, H2, W2):
         B1, N1, C1 = x.shape
         B2, N2, C2 = y.shape
-        q = self.q(x).reshape(B1, N1, self.num_heads, C1 // self.num_heads).permute(0, 2, 1, 3)
+        q = self.q(x).reshape(B1, N1, self.num_heads, C2 // self.num_heads).permute(0, 2, 1, 3) # Changed C1 to C2
 
         # Skip the pooling (i.e. downsampling) as we are upsampling the smaller featuremap instead
         # x_ = y.permute(0, 2, 1).reshape(B2, C2, H2, W2)
@@ -128,14 +134,14 @@ class CrossAttention(nn.Module):
         # Do we even still need the norm when pooling is skipped?
         x_ = self.norm(y)
         x_ = self.act(x_)
-        kv = self.kv(x_).reshape(B1, -1, 2, self.num_heads, C1 // self.num_heads).permute(2, 0, 3, 1, 4) #여기에다가 rollout을 넣는다면?
+        kv = self.kv(x_).reshape(B1, -1, 2, self.num_heads, C2 // self.num_heads).permute(2, 0, 3, 1, 4) # Changed C1 to C2
         k, v = kv[0], kv[1]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B1, N1, C1)
+        x = (attn @ v).transpose(1, 2).reshape(B1, N1, C2) # Changed C1 to C2
 
         # Somewhere here an error occurs!
         x = self.proj(x)
@@ -148,16 +154,16 @@ class Block(nn.Module):
     def __init__(self, dim1, dim2, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, pool_ratio=16):
         super().__init__()
-        self.norm1 = norm_layer(dim1)
+        self.norm1 = norm_layer(dim1) # Changed from dim1 to dim2 (But I think atually it worked work previous stage with old setting only for stage 2 it dindn't work anymore) --> back to dim1
         self.norm2 = norm_layer(dim2)
-        self.norm3 = norm_layer(dim1)
+        self.norm3 = norm_layer(dim2) # Changed from dim1 to dim2
 
         self.attn = CrossAttention(dim1=dim1, dim2=dim2, num_heads=num_heads, pool_ratio=pool_ratio)
-
+        self.proj_res = nn.Linear(dim1, dim2) # Introduced new projection for residual connection (otherwise non-matching shapes) --> Only now this in no real residual connection anymore ...
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         mlp_hidden_dim = int(dim1 * mlp_ratio)
-        self.mlp = Mlp(in_features=dim1, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        self.mlp = Mlp(in_features=dim2, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop) # Changed from dim1 to dim2
 
         self.apply(self._init_weights)
 
@@ -177,25 +183,25 @@ class Block(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, x, y, H2, W2, H1, W1):
-        x = x + self.drop_path(self.attn(self.norm1(x), self.norm2(y), H2, W2)) #self.norm2(y)이 F1에 대한 값
-        x = x + self.drop_path(self.mlp(self.norm3(x), H1, W1)) # in MLP the error occurs
+        x = self.proj_res(x) + self.drop_path(self.attn(self.norm1(x), self.norm2(y), H2, W2)) 
+        x = x + self.drop_path(self.mlp(self.norm3(x), H1, W1)) 
 
         return x
 
 @MODELS.register_module()
-class CrossAttentionUNetHead(BaseDecodeHead):
+class CrossAttentionUNetHead2(BaseDecodeHead):
     """
     SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers
     """
     def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
-        super(CrossAttentionUNetHead, self).__init__(input_transform='multiple_select', **kwargs)
+        super(CrossAttentionUNetHead2, self).__init__(input_transform='multiple_select', **kwargs)
         assert len(feature_strides) == len(self.in_channels)
         assert min(feature_strides) == feature_strides[0]
         self.feature_strides = feature_strides
 
         c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
 
-        embedding_dim = 256 # Changed to 256 because this is our the embed dim at the final decoder stage (and actually in all others as well)
+        embedding_dim = 32 # Changed to 32 because this is our the embed dim at the final decoder stage (and actually in all others as well)
 
         # general recipe:
         # self.attn_cSmaller_cGreater = Block (dim1=cSmaller, dim2=cGreater, num_heads=Copy, mlp_ratio=Copy, drop_path=Copy, pool_ratio=Adjust) 
@@ -211,9 +217,9 @@ class CrossAttentionUNetHead(BaseDecodeHead):
         # Current problem num_channels are staying the same (so very high --> high compute; pool operation is currently deactivated!
         self.attn_c4_c3 = Block(dim1=c4_in_channels, dim2=c3_in_channels, num_heads=8, mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=2)
-        self.attn_d1_c2 = Block(dim1=c4_in_channels, dim2=c2_in_channels, num_heads=4, mlp_ratio=4, # cannot be 4 here because needs to be devideable by emded_dim (256)
+        self.attn_d1_c2 = Block(dim1=c3_in_channels, dim2=c2_in_channels, num_heads=4, mlp_ratio=4, # cannot be 4 here because needs to be devideable by emded_dim (256) # changed dim1 to c3_in_channels
                                 drop_path=0.1, pool_ratio=8)
-        self.attn_d2_c1 = Block(dim1=c4_in_channels, dim2=c1_in_channels, num_heads=2, mlp_ratio=4,
+        self.attn_d2_c1 = Block(dim1=c2_in_channels, dim2=c1_in_channels, num_heads=2, mlp_ratio=4, # changed dim1 to c2_in_channels
                                 drop_path=0.1, pool_ratio=8)
 
 
@@ -224,12 +230,13 @@ class CrossAttentionUNetHead(BaseDecodeHead):
         #     norm_cfg=dict(type='SyncBN', requires_grad=True)
         # )
 
-        self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
+        # Exchanged by inbuild self.cls_seg function
+        # self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
 
     def forward(self, inputs):
-        x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
+        x = self._transform_inputs(inputs) 
         c1, c2, c3, c4 = x
-        ############## MLP decoder on C1-C4 ###########
+
         n, _, h4, w4 = c4.shape
         _, _, h3, w3 = c3.shape
         _, _, h2, w2 = c2.shape
@@ -268,7 +275,7 @@ class CrossAttentionUNetHead(BaseDecodeHead):
                 # -------- First decoder stage ---------
         # Upsampling to the next higher feature map to be fused (UNet style)
         c4 = resize(c4, size=(h3, w3), mode='bilinear', align_corners=False)
-        # n, _, h4, w4 = c4.shape # perhaps update values after resize?
+        # n, _, h4, w4 = c4.shape # perhaps update values after resize? --> if is on x will be [4096, 20] not [1024, 160] 
         c4 = nchw_to_nlc(c4)
         c3 = nchw_to_nlc(c3)
         x = self.attn_c4_c3(c4, c3, h4, w4, h3, w3)
@@ -292,7 +299,8 @@ class CrossAttentionUNetHead(BaseDecodeHead):
         x = nlc_to_nchw(x, (h_d3, w_d3))
 
 
-        x = self.dropout(x)
-        x = self.linear_pred(x)
+        # x = self.dropout(x)
+       #  x = self.linear_pred(x) use conv_seg provided of the parent class instead (otherwise cuda not all params are used issue)
+        x = self.cls_seg(x)
 
         return x

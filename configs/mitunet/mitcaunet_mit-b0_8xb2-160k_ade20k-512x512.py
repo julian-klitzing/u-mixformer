@@ -10,11 +10,13 @@ model = dict(
     data_preprocessor=data_preprocessor,
     pretrained='checkpoints/classification/mit_b0.pth',
     decode_head=dict(
-        type='CrossAttentionUNetHead',
+        type='CrossAttentionUNetHead3',
         feature_strides=[4, 8, 16, 32],
         # in_channels=[32, 64, 160, 256],
         # in_index=[0, 1, 2, 3],
         # channels=128,
+        dropout_ratio=0.1,
+        channels=32, # num channels of very last features before #classes get predicted
         num_classes=150
     )
 )
@@ -43,6 +45,6 @@ param_scheduler = [
         by_epoch=False,
     )
 ]
-train_dataloader = dict(batch_size=8, num_workers=4)
+train_dataloader = dict(batch_size=8, num_workers=4) # Set to 1 cause SeulKi trains on same server
 val_dataloader = dict(batch_size=1, num_workers=4)
 test_dataloader = val_dataloader
