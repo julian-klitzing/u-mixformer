@@ -26,10 +26,13 @@ from IPython import embed
 from mmcv.cnn import Conv2d, build_activation_layer, build_norm_layer
 
 """
-CrossAttentionHead3 does upsampling on H, W at each stage but downamples channels (by dimension of linear projection for queries).
+CrossAttentionHead4 does upsampling on H, W at each stage and downamples channels (by dimension of linear projection for queries).
 Also the bigger features (key, value) are reduced by pooling ratio, as applied in SegFormer EfficientSelfAttention.
 
---> Forward/Backward size for (1, 3, 512, 512) is  
+In contrast to CrossAttentionHead3 GELU is used again after the sequence reduction (as already used by FeedFormer after sequence reduction).
+Additionally all decoder stages d1, d2 
+
+--> Forward/Backward size for (1, 3, 512, 512) is  ...
 """
 
 
@@ -91,7 +94,7 @@ class CrossAttention(nn.Module):
             dim2 (int): Number channels C of the feature map with fewer channels.
         """    
         super().__init__()
-        assert dim1 % num_heads == 0, f"dim {dim1} should be divided by num_heads {num_heads}."
+        assert dim2 % num_heads == 0, f"dim {dim1} should be divided by num_heads {num_heads}." # Chenged dim1 to dim2
 
         self.dim1 = dim1
         self.dim2 = dim2
@@ -129,7 +132,7 @@ class CrossAttention(nn.Module):
         # Use norm layer created by build_norm_layer instead (should be identical anyways) ...
         # self.norm = nn.LayerNorm(dim2)
         # No GELU anymore (SegFormer doesn't use it too)
-        # self.act = nn.GELU()
+        self.act = nn.GELU()
 
         self.apply(self._init_weights)
 
@@ -189,7 +192,6 @@ class CrossAttention(nn.Module):
 
         x = (attn @ v).transpose(1, 2).reshape(B1, N1, C2) # Changed C1 to C2
 
-        # Somewhere here an error occurs!
         x = self.proj(x)
         x = self.proj_drop(x)
 
@@ -231,50 +233,36 @@ class Block(nn.Module):
     def forward(self, x, y, H2, W2, H1, W1):
         x = self.proj_res(x) + self.drop_path(self.attn(self.norm1(x), self.norm2(y), H2, W2, H1, W1)) 
         x = x + self.drop_path(self.mlp(self.norm3(x), H1, W1)) 
-
         return x
 
 @MODELS.register_module()
-class CrossAttentionUNetHead3(BaseDecodeHead):
+class CrossAttentionUNetHead4(BaseDecodeHead):
     """
     SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers
     """
     def __init__(self, feature_strides, **kwargs):
-        super(CrossAttentionUNetHead3, self).__init__(input_transform='multiple_select', **kwargs)
+        super(CrossAttentionUNetHead4, self).__init__(input_transform='multiple_select', **kwargs)
         assert len(feature_strides) == len(self.in_channels)
         assert min(feature_strides) == feature_strides[0]
         self.feature_strides = feature_strides
 
         c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
 
-        embedding_dim = 32 # Changed to 32 because this is our the embed dim at the final decoder stage (and actually in all others as well)
-
-        # general recipe:
-        # self.attn_cSmaller_cGreater = Block (dim1=cSmaller, dim2=cGreater, num_heads=Copy, mlp_ratio=Copy, drop_path=Copy, pool_ratio=Adjust) 
-
-        # self.attn_c4_c1 = Block(dim1=c4_in_channels, dim2=c1_in_channels, num_heads=8, mlp_ratio=4,
-        #                         drop_path=0.1, pool_ratio=8)
-        # self.attn_c3_c1 = Block(dim1=c3_in_channels, dim2=c1_in_channels, num_heads=5, mlp_ratio=4,
-        #                         drop_path=0.1, pool_ratio=4)
-        # self.attn_c2_c1 = Block(dim1=c2_in_channels, dim2=c1_in_channels, num_heads=2, mlp_ratio=4,
-        #                         drop_path=0.1, pool_ratio=2)
-
-
-        # Current problem num_channels are staying the same (so very high --> high compute; pool operation is currently deactivated!
-        self.attn_c4_c3 = Block(dim1=c4_in_channels, dim2=c3_in_channels, num_heads=8, mlp_ratio=4,
+        embedding_dim = 256 # changed to 256 because this seems reasonable if num_classes is 150
+       
+        self.attn_c4_c3 = Block(dim1=c4_in_channels, dim2=c3_in_channels, num_heads=5, mlp_ratio=4,
                                 drop_path=0.1, sr_ratio=2)
-        self.attn_d1_c2 = Block(dim1=c3_in_channels, dim2=c2_in_channels, num_heads=4, mlp_ratio=4, # cannot be 4 here because needs to be devideable by emded_dim (256) # changed dim1 to c3_in_channels
+        self.attn_d1_c2 = Block(dim1=c3_in_channels, dim2=c2_in_channels, num_heads=2, mlp_ratio=4, # cannot be 4 here because needs to be devideable by emded_dim (256) # changed dim1 to c3_in_channels
                                 drop_path=0.1, sr_ratio=4)
-        self.attn_d2_c1 = Block(dim1=c2_in_channels, dim2=c1_in_channels, num_heads=2, mlp_ratio=4, # changed dim1 to c2_in_channels
+        self.attn_d2_c1 = Block(dim1=c2_in_channels, dim2=c1_in_channels, num_heads=1, mlp_ratio=4, # changed dim1 to c2_in_channels
                                 drop_path=0.1, sr_ratio=8)
 
-        # Not needed as no fusion is used
-        # self.linear_fuse = ConvModule(
-        #     in_channels=(c1_in_channels + c2_in_channels + c3_in_channels + c4_in_channels),
-        #     out_channels=embedding_dim,
-        #     kernel_size=1,
-        #     norm_cfg=dict(type='SyncBN', requires_grad=True)
-        # )
+        self.linear_fuse = ConvModule(
+            in_channels=(c1_in_channels + c2_in_channels + c3_in_channels + c4_in_channels),
+            out_channels=embedding_dim,
+            kernel_size=1,
+            norm_cfg=dict(type='SyncBN', requires_grad=True)
+        )
 
         # Exchanged by inbuild self.cls_seg function
         # self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
@@ -294,29 +282,36 @@ class CrossAttentionUNetHead3(BaseDecodeHead):
         # n, _, h4, w4 = c4.shape # perhaps update values after resize? --> if is on x will be [4096, 20] not [1024, 160] 
         c4 = nchw_to_nlc(c4)
         c3 = nchw_to_nlc(c3)
-        x = self.attn_c4_c3(c4, c3, h4, w4, h3, w3)
+        d1 = self.attn_c4_c3(c4, c3, h4, w4, h3, w3)
         h_d1, w_d1 = h3, w3 # inital 
-        x = nlc_to_nchw(x, (h_d1, w_d1))
+        d1 = nlc_to_nchw(d1, (h_d1, w_d1))
 
         # -------- Second decoder stage ---------
-        x = resize(x, size=(h2, w2), mode='bilinear', align_corners=False)
-        x = nchw_to_nlc(x)
+        d1 = resize(d1, size=(h2, w2), mode='bilinear', align_corners=False)
+        d1 = nchw_to_nlc(d1)
         c2 = nchw_to_nlc(c2)
-        x = self.attn_d1_c2(x, c2, h_d1, w_d1, h2, w2)
+        d2 = self.attn_d1_c2(d1, c2, h_d1, w_d1, h2, w2)
         h_d2, w_d2 = h2, w2 # inital 
-        x = nlc_to_nchw(x, (h_d2, w_d2))
+        d2 = nlc_to_nchw(d2, (h_d2, w_d2))
 
         # -------- Third decoder stage ---------
-        x = resize(x, size=(h1, w1), mode='bilinear', align_corners=False)
-        x = nchw_to_nlc(x)
+        d2 = resize(d2, size=(h1, w1), mode='bilinear', align_corners=False)
+        d2 = nchw_to_nlc(d2)
         c1 = nchw_to_nlc(c1)
-        x = self.attn_d2_c1(x, c1, h_d2, w_d2, h1, w1)
+        d3 = self.attn_d2_c1(d2, c1, h_d2, w_d2, h1, w1)
         h_d3, w_d3 = h1, w1 # inital 
-        x = nlc_to_nchw(x, (h_d3, w_d3))
+        d3 = nlc_to_nchw(d3, (h_d3, w_d3))
 
+        # -------- Resize and concat for final feature map
+        c4_up = resize(nlc_to_nchw(c4, (h3, w3)), (h_d3, w_d3))
+        d1_up = resize(nlc_to_nchw(d1, (h2, w2)), (h_d3, w_d3))
+        # d2_up = resize(nlc_to_nchw(c2, (h4, w4)), (h_d3, w_d3)) is already upsampled
 
+        x = self.linear_fuse(torch.cat([c4_up, d1_up, nlc_to_nchw(d2, (h1, w1)), d3], dim=1))
+        # Use conv_seg provided of the parent class instead of self.linear_pred (otherwise cuda not all params are used issue)
+        # then self.dropout also not needed as this is already used in self.cls_seg
         # x = self.dropout(x)
-        # x = self.linear_pred(x) use conv_seg provided of the parent class instead (otherwise cuda not all params are used issue)
+        # x = self.linear_pred(x) 
         x = self.cls_seg(x)
 
         return x
