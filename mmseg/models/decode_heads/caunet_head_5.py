@@ -221,7 +221,6 @@ class Block(nn.Module):
             H2, W2 (int, int): Is height and width of (non-resized/old) input x.
             H1, W1 (int, int): Is height and width of input y.
         """
-
         x = x + self.drop_path(self.attn(self.norm1(x), self.norm2(y), H2, W2, H1, W1)) #self.norm2(y)이 F1에 대한 값
         x = x + self.drop_path(self.mlp(self.norm3(x), H1, W1)) # in MLP the error occurs
 
