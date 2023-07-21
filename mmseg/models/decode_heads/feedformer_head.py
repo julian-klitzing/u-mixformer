@@ -164,7 +164,16 @@ class Block(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, x, y, H2, W2, H1, W1):
+        """
+        Args:
+            x (nn.Tensor): Is the data of shape (B, L, D) to be projected to Q.
+            y (nn.Tensor): Is the data of shape (B, L, D) to be projected to K, V.
+            H2, W2 (int, int): Is height and width of input y.
+            H1, W1 (int, int): Is height and width of input x.
+        """
+        # H2, W2 needed because y needs to be reshaped to apply pool
         x = x + self.drop_path(self.attn(self.norm1(x), self.norm2(y), H2, W2)) #self.norm2(y)이 F1에 대한 값
+        # H1, W1 needed because x is still H1, W1 and needs to be reshaped to apply conv
         x = x + self.drop_path(self.mlp(self.norm3(x), H1, W1))
 
         return x
