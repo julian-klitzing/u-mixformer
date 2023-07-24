@@ -176,11 +176,7 @@ class CrossAttention(nn.Module):
             x_ = self.sr(x_)
             x_ = nchw_to_nlc(x_)
             x_ = self.norm(x_)
-<<<<<<< HEAD
             x_ = self.act(x_) # use GELU again (but is GELU as an activatio function a weird choice here?)
-=======
-            x_ = self.act(x_)
->>>>>>> skyeom
         else:
             x_ = y
         # ---------------------------------------

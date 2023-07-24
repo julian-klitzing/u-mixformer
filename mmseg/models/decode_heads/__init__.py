@@ -40,7 +40,7 @@ from .caunet_head_3 import CrossAttentionUNetHead3
 from .caunet_head_4 import CrossAttentionUNetHead4
 from .caunet_head_5 import CrossAttentionUNetHead5
 from .feedformer_head import FeedFormerHead, FeedFormerHead_new, FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new
-from .caunet_head_3 import CrossAttentionUNetHead3
+from .caunet_head_pe import CrossAttentionUNetHeadPE
 
 __all__ = [
     'FCNHead', 'PSPHead', 'ASPPHead', 'PSAHead', 'NLHead', 'GCHead', 'CCHead',
@@ -53,5 +53,6 @@ __all__ = [
     'LightHamHead', 'PIDHead', 'FeedFormerHead', 'MedicalUNetHead', "CrossAttentionUNetHead",
     "CrossAttentionUNetHead2", "CrossAttentionUNetHead3", "CrossAttentionUNetHead4",
     "CrossAttentionUNetHead5", # new
-    'FeedFormerHead_new', 'FeedFormerHeadUNet', 'FeedFormerHeadUNetPlus', 'FeedFormerHead32', 'CrossAttentionUNetHead3', 'FeedFormerHead32_new'
+    'FeedFormerHead_new', 'FeedFormerHeadUNet', 'FeedFormerHeadUNetPlus', 'FeedFormerHead32', 'CrossAttentionUNetHead3', 'FeedFormerHead32_new',
+    'CrossAttentionUNetHeadPE'
 ]
