@@ -5,7 +5,7 @@ from mmcv.cnn import ConvModule, DepthwiseSeparableConvModule
 from mmengine.utils.dl_utils.parrots_wrapper import SyncBatchNorm
 
 from mmseg.models.decode_heads import DepthwiseSeparableFCNHead, FCNHead
-from .utils import to_cuda
+from tests.test_models.test_heads.utils import to_cuda
 
 
 def test_fcn_head():
@@ -129,3 +129,7 @@ def test_sep_fcn_head():
     assert head.concat_input
     assert isinstance(head.convs[0], DepthwiseSeparableConvModule)
     assert isinstance(head.convs[1], DepthwiseSeparableConvModule)
+
+if __name__ == '__main__':
+    # test_sep_fcn_head()
+    test_fcn_head()

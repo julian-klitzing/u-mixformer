@@ -124,6 +124,7 @@ class CrossAttention(nn.Module):
                 stride=sr_ratio)
             # The ret[0] of build_norm_layer is norm name.
             self.norm = build_norm_layer(norm_cfg, dim2)[1]
+<<<<<<< HEAD
          # ----------------------------------------------------------------------------------------------------
 
         # Use norm layer created by build_norm_layer instead (should be identical anyways) ...
@@ -131,6 +132,10 @@ class CrossAttention(nn.Module):
         # No GELU anymore (SegFormer doesn't use it too)
         # self.act = nn.GELU()
 
+=======
+            self.act = nn.GELU() #(SegFormer doesn't use it too)
+ 
+>>>>>>> skyeom
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -171,7 +176,11 @@ class CrossAttention(nn.Module):
             x_ = self.sr(x_)
             x_ = nchw_to_nlc(x_)
             x_ = self.norm(x_)
+<<<<<<< HEAD
             x_ = self.act(x_) # use GELU again (but is GELU as an activatio function a weird choice here?)
+=======
+            x_ = self.act(x_)
+>>>>>>> skyeom
         else:
             x_ = y
         # ---------------------------------------

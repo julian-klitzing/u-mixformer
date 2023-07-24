@@ -439,7 +439,9 @@ class MixVisionTransformer(BaseModule):
         outs = []
 
         for i, layer in enumerate(self.layers):
-            x, hw_shape = layer[0](x)
+            x, hw_shape = layer[0](x) #PatchEmbedding
+            if i == 0:
+                patch_embed = x
             for block in layer[1]:
                 x = block(x, hw_shape)
             x = layer[2](x)
@@ -447,4 +449,4 @@ class MixVisionTransformer(BaseModule):
             if i in self.out_indices:
                 outs.append(x)
 
-        return outs
+        return outs, patch_embed
