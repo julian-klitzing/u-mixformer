@@ -51,6 +51,7 @@ class BoostRunner(Runner): #For boosting
 
         print(f'here we are')
         model = self.model
+        self.dummy_train()
         # # ---------------------- insert bottleneck and freeze weights --------------
         # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         # input_shape = (1, 3, 512, 512)
@@ -193,6 +194,10 @@ class BoostRunner(Runner): #For boosting
         # Backward pass and optimization
         optimizer.zero_grad()
         loss.backward()
+
+        for name, param in self.model.named_parameters():
+            if param.grad is None:
+                print(name)
 
         optimizer.step()
             
