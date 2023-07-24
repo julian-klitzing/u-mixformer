@@ -99,6 +99,9 @@ def main():
     # start training
     runner.train()
 
-
 if __name__ == '__main__':
     main()
+
+    # from mmengine.analysis import get_model_complexity_info
+    # analysis_results = get_model_complexity_info(runner.model.cpu(), (3,512,512))
+    # print(analysis_results['out_table'])
