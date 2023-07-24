@@ -142,70 +142,6 @@ class CrossAttention(nn.Module):
 
         return x
 
-class CrossAttention32(nn.Module):
-    def __init__(self, dim1, dim2, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., pool_ratio=16):
-        super().__init__()
-        assert dim1 % num_heads == 0, f"dim {dim1} should be divided by num_heads {num_heads}."
-
-        self.dim1 = dim1
-        self.dim2 = dim2
-        self.num_heads = num_heads
-        head_dim = dim1 // num_heads
-        self.pool_ratio = pool_ratio
-        self.scale = qk_scale or head_dim ** -0.5
-
-        self.q = nn.Linear(dim1, dim1, bias=qkv_bias)
-        self.kv = nn.Linear(dim2, dim1 * 2, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim1, dim1)
-        self.proj_drop = nn.Dropout(proj_drop)
-
-        if self.pool_ratio >= 0:
-            self.pool = nn.AvgPool2d(self.pool_ratio, self.pool_ratio)
-            self.sr = nn.Conv2d(dim2, dim2, kernel_size=1, stride=1)
-        self.norm = nn.LayerNorm(dim2)
-        self.act = nn.GELU()
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv2d):
-            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-            fan_out //= m.groups
-            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
-            if m.bias is not None:
-                m.bias.data.zero_()
-
-    def forward(self, x, y, H2, W2):
-        B1, N1, C1 = x.shape
-        B2, N2, C2 = y.shape
-        q = self.q(x).reshape(B1, N1, self.num_heads, C1 // self.num_heads).permute(0, 2, 1, 3)
-
-        x_ = y.permute(0, 2, 1).reshape(B2, C2, H2, W2)
-        if self.pool_ratio >= 0:
-            x_ = self.sr(self.pool(x_)).reshape(B2, C2, -1).permute(0, 2, 1)
-            x_ = self.norm(x_)
-            x_ = self.act(x_)
-
-        kv = self.kv(x_).reshape(B1, -1, 2, self.num_heads, C1 // self.num_heads).permute(2, 0, 3, 1, 4) #여기에다가 rollout을 넣는다면?
-        k, v = kv[0], kv[1]
-
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(1, 2).reshape(B1, N1, C1)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-
-        return x
-
 class MultiCrossAttention(nn.Module):
     def __init__(self, dim1, dim2, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., pool_ratio=16):
         super().__init__()
@@ -655,6 +591,80 @@ class FeedFormerHead32(BaseDecodeHead):
 
         return x
 
+@MODELS.register_module()
+class FeedFormerHead32_new(BaseDecodeHead):
+    """
+    SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers
+    """
+    def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
+        super(FeedFormerHead32_new, self).__init__(input_transform='multiple_select', **kwargs)
+        assert len(feature_strides) == len(self.in_channels)
+        assert min(feature_strides) == feature_strides[0]
+        self.feature_strides = feature_strides
+
+        c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
+
+        embedding_dim = 512
+
+        self.attn_c4_c3 = Block(dim1=c4_in_channels, dim2=c3_in_channels, num_heads=8, mlp_ratio=4, #query:c4, key&value:c3
+                                drop_path=0.1, pool_ratio=2)
+        self.attn_c3_c2 = Block(dim1=c4_in_channels, dim2=c2_in_channels, num_heads=8, mlp_ratio=4, #query:c3, key&value:c2
+                                drop_path=0.1, pool_ratio=4)
+        self.attn_c2_c1 = Block(dim1=c4_in_channels, dim2=c1_in_channels, num_heads=8, mlp_ratio=4, #query:c2, key&value:c1
+                                drop_path=0.1, pool_ratio=8)
+        # self.attn_c4_c3 = Block(dim1=c4_in_channels, dim2=c3_in_channels, num_heads=8, mlp_ratio=4, #query:c4, key&value:c3
+        #                         drop_path=0.1, pool_ratio=-2)
+        # self.attn_c3_c2 = Block(dim1=c4_in_channels, dim2=c2_in_channels, num_heads=8, mlp_ratio=4, #query:c3, key&value:c2
+        #                         drop_path=0.1, pool_ratio=2)
+        # self.attn_c2_c1 = Block(dim1=c4_in_channels, dim2=c1_in_channels, num_heads=8, mlp_ratio=4, #query:c2, key&value:c1
+        #                         drop_path=0.1, pool_ratio=4)
+
+        # self.se = SELayer(embedding_dim)
+
+        self.linear_fuse = ConvModule(
+            in_channels=(c4_in_channels * 4),
+            out_channels=embedding_dim,
+            kernel_size=1,
+            norm_cfg=dict(type='SyncBN', requires_grad=True)
+        )
+
+        self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
+
+    def forward(self, inputs):
+        x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
+        c1, c2, c3, c4 = x
+        ############## MLP decoder on C1-C4 ###########
+        _, _, h3, w3 = c3.shape
+        _, _, h2, w2 = c2.shape
+        _, _, h1, w1 = c1.shape
+    
+        # Upsampling to the next higher feature map to be fused (UNet style)
+        c4 = resize(c4, size=(h3, w3), mode='bilinear', align_corners=False)
+        n, _, h4, w4 = c4.shape
+
+        c1 = c1.flatten(2).transpose(1, 2)
+        c2 = c2.flatten(2).transpose(1, 2)
+        c3 = c3.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, patches]
+        _c4 = c4.flatten(2).transpose(1, 2) 
+
+        _c3 = self.attn_c4_c3(_c4, c3, h3, w3, h4, w4)
+        _c2 = self.attn_c3_c2(_c3, c2, h2, w2, h4, w4)
+        _c1 = self.attn_c2_c1(_c2, c1, h1, w1, h4, w4)
+
+        # _c4 = c4.permute(0,2,1).reshape(n, -1, h4, w4)
+        _c3 = _c3.permute(0,2,1).reshape(n, -1, h4, w4)
+        _c2 = _c2.permute(0,2,1).reshape(n, -1, h4, w4)
+        _c1 = _c1.permute(0,2,1).reshape(n, -1, h4, w4)
+
+        _c = self.linear_fuse(torch.cat([c4, _c3, _c2, _c1], dim=1))
+
+        # _c = self.se(_c)
+
+        x = self.dropout(_c)
+        x = self.linear_pred(x)
+
+        return x
+
 
 @MODELS.register_module()
 class FeedFormerHeadUNet(BaseDecodeHead):
@@ -818,85 +828,6 @@ class FeedFormerHeadUNetPlus(BaseDecodeHead):
         return x
 
 
-# @MODELS.register_module()
-# class FeedFormerHead_new(BaseDecodeHead): #FeedFormer setting에 Information bottleneck 집어 넣은 실험
-#     """
-#     SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers
-#     """
-#     def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
-#         super(FeedFormerHead_new, self).__init__(input_transform='multiple_select', **kwargs)
-#         assert len(feature_strides) == len(self.in_channels)
-#         assert min(feature_strides) == feature_strides[0]
-#         self.feature_strides = feature_strides
-#         # Hyperparameters
-#         beta   = 1e-3
-#         z_dim  = 256
-#         epochs = 200
-#         batch_size = 128
-#         learning_rate = 1e-4
-#         decay_rate = 0.97
-
-#         c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
-
-#         embedding_dim = 128
-
-#         self.VIB = DeepVIB(z_dim = z_dim)
-
-#         self.attn_c4_c1 = Block(dim1=c4_in_channels, dim2=c1_in_channels, num_heads=8, mlp_ratio=4,
-#                                 drop_path=0.1, pool_ratio=8)
-#         self.attn_c3_c1 = Block(dim1=c3_in_channels, dim2=c1_in_channels, num_heads=5, mlp_ratio=4,
-#                                 drop_path=0.1, pool_ratio=4)
-#         self.attn_c2_c1 = Block(dim1=c2_in_channels, dim2=c1_in_channels, num_heads=2, mlp_ratio=4,
-#                                 drop_path=0.1, pool_ratio=2)
-
-#         self.linear_fuse = ConvModule(
-#             in_channels=(c1_in_channels + c2_in_channels + c3_in_channels + c4_in_channels),
-#             out_channels=embedding_dim,
-#             kernel_size=1,
-#             norm_cfg=dict(type='SyncBN', requires_grad=True)
-#         )
-
-#         self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
-        
-
-#     def forward(self, inputs):
-#         x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
-#         c1, c2, c3, c4 = x
-
-#         ############## MLP decoder on C1-C4 ###########
-#         n, _, h4, w4 = c4.shape
-#         _, _, h3, w3 = c3.shape
-#         _, _, h2, w2 = c2.shape
-#         _, _, h1, w1 = c1.shape
-
-#         c1 = c1.flatten(2).transpose(1, 2)
-#         c2 = c2.flatten(2).transpose(1, 2)
-#         c3 = c3.flatten(2).transpose(1, 2)
-#         c4 = c4.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, patches]
-
-#         c4_out, mu, std = self.VIB(c4)
-
-#         _c4 = self.attn_c4_c1(c4_out, c1, h1, w1, h4, w4)
-#         # _c4 += c4
-#         _c4 = c4.permute(0,2,1).reshape(n, -1, h4, w4)
-#         _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
-
-#         # _c3 += c3
-#         _c3 = c3.permute(0,2,1).reshape(n, -1, h3, w3)
-#         _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
-
-#         # _c2 += c2
-#         _c2 = c2.permute(0,2,1).reshape(n, -1, h2, w2)
-#         _c2 = resize(_c2, size=(h1, w1), mode='bilinear', align_corners=False)
-
-#         _c1 = c1.permute(0, 2, 1).reshape(n, -1, h1, w1)
-
-#         _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
-
-#         x = self.dropout(_c)
-#         x = self.linear_pred(x)
-
-#         return x, _, _
     
 @MODELS.register_module()
 class FeedFormerHead_new(BaseDecodeHead):

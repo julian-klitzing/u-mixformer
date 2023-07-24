@@ -124,13 +124,8 @@ class CrossAttention(nn.Module):
                 stride=sr_ratio)
             # The ret[0] of build_norm_layer is norm name.
             self.norm = build_norm_layer(norm_cfg, dim2)[1]
-         # ----------------------------------------------------------------------------------------------------
-
-        # Use norm layer created by build_norm_layer instead (should be identical anyways) ...
-        # self.norm = nn.LayerNorm(dim2)
-        # No GELU anymore (SegFormer doesn't use it too)
-        # self.act = nn.GELU()
-
+            self.act = nn.GELU() #(SegFormer doesn't use it too)
+ 
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -153,8 +148,8 @@ class CrossAttention(nn.Module):
         Args:
             x (nn.Tensor): Is the data of shape (B, L, D) to be projected to Q.
             y (nn.Tensor): Is the data of shape (B, L, D) to be projected to K, V.
-            H2, W2 (int, int): Is height and width of input x.
-            H1, W1 (int, int): Is height and width of input y.
+            H2, W2 (int, int): Is height and width of input x. (size for query part)
+            H1, W1 (int, int): Is height and width of input y. (size for key part)
         """
         B1, N1, C1 = x.shape
         B2, N2, C2 = y.shape
@@ -171,6 +166,7 @@ class CrossAttention(nn.Module):
             x_ = self.sr(x_)
             x_ = nchw_to_nlc(x_)
             x_ = self.norm(x_)
+            x_ = self.act(x_)
         else:
             x_ = y
         # ---------------------------------------

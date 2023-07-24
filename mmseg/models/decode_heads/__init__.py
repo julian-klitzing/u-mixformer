@@ -32,7 +32,7 @@ from .setr_mla_head import SETRMLAHead
 from .setr_up_head import SETRUPHead
 from .stdc_head import STDCHead
 from .uper_head import UPerHead
-from .feedformer_head import FeedFormerHead, FeedFormerHead_new, FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32
+from .feedformer_head import FeedFormerHead, FeedFormerHead_new, FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new
 from .caunet_head_3 import CrossAttentionUNetHead3
 
 __all__ = [
@@ -43,5 +43,5 @@ __all__ = [
     'SETRMLAHead', 'DPTHead', 'SETRMLAHead', 'SegmenterMaskTransformerHead',
     'SegformerHead', 'ISAHead', 'STDCHead', 'IterativeDecodeHead',
     'KernelUpdateHead', 'KernelUpdator', 'MaskFormerHead', 'Mask2FormerHead',
-    'LightHamHead', 'PIDHead', 'FeedFormerHead', 'FeedFormerHead_new', 'FeedFormerHeadUNet', 'FeedFormerHeadUNetPlus', 'FeedFormerHead32', 'CrossAttentionUNetHead3'
+    'LightHamHead', 'PIDHead', 'FeedFormerHead', 'FeedFormerHead_new', 'FeedFormerHeadUNet', 'FeedFormerHeadUNetPlus', 'FeedFormerHead32', 'CrossAttentionUNetHead3', 'FeedFormerHead32_new'
 ]
