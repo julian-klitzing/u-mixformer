@@ -252,6 +252,7 @@ class APFormerHead(BaseDecodeHead):
         _c2 = resize(_c2, size=(h1, w1), mode='bilinear', align_corners=False)
 
         _c1 = self.attn_c1(c1, c_key, h4, w4, h1, w1)
+        # _c1 += c1
         _c1 = c1.permute(0, 2, 1).reshape(n, -1, h1, w1)
         _c1 = resize(_c1, size=(h1, w1), mode='bilinear', align_corners=False)
 
