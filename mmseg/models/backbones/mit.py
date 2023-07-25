@@ -440,8 +440,8 @@ class MixVisionTransformer(BaseModule):
 
         for i, layer in enumerate(self.layers):
             x, hw_shape = layer[0](x) #PatchEmbedding
-            if i == 0:
-                patch_embed = x
+            # if i == 0:
+            #     patch_embed = x
             for block in layer[1]:
                 x = block(x, hw_shape)
             x = layer[2](x)
@@ -449,4 +449,7 @@ class MixVisionTransformer(BaseModule):
             if i in self.out_indices:
                 outs.append(x)
 
-        return outs, patch_embed
+        return outs
+
+# import matplotlib.pyplot as plt
+# plt.imsave('c4_output.png', x[0,:,1].reshape(16,16).cpu().detach().numpy())
