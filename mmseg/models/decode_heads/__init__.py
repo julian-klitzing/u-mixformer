@@ -33,8 +33,10 @@ from .setr_up_head import SETRUPHead
 from .stdc_head import STDCHead
 from .uper_head import UPerHead
 from .apformer_head import APFormerHead, APFormerHead2
+from .apformer_head_city import APFormerHeadCity
 from .feedformer_head import FeedFormerHead, FeedFormerHead_new, FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new, FeedFormerHead_cat
 from .caunet_head_3 import CrossAttentionUNetHead3
+from .feedformer_head_city import FeedFormerHeadCity
 
 __all__ = [
     'FCNHead', 'PSPHead', 'ASPPHead', 'PSAHead', 'NLHead', 'GCHead', 'CCHead',
@@ -43,6 +45,6 @@ __all__ = [
     'PointHead', 'APCHead', 'DMHead', 'LRASPPHead', 'SETRUPHead',
     'SETRMLAHead', 'DPTHead', 'SETRMLAHead', 'SegmenterMaskTransformerHead',
     'SegformerHead', 'ISAHead', 'STDCHead', 'IterativeDecodeHead',
-    'KernelUpdateHead', 'KernelUpdator', 'MaskFormerHead', 'Mask2FormerHead', 'APFormerHead', 'APFormerHead2',
-    'LightHamHead', 'PIDHead', 'FeedFormerHead', 'FeedFormerHead_new', 'FeedFormerHeadUNet', 'FeedFormerHeadUNetPlus', 'FeedFormerHead32', 'CrossAttentionUNetHead3', 'FeedFormerHead32_new', 'FeedFormerHead_cat'
+    'KernelUpdateHead', 'KernelUpdator', 'MaskFormerHead', 'Mask2FormerHead', 'APFormerHead', 'APFormerHead2', 'APFormerHeadCity',
+    'LightHamHead', 'PIDHead', 'FeedFormerHead', 'FeedFormerHead_new', 'FeedFormerHeadUNet', 'FeedFormerHeadUNetPlus', 'FeedFormerHead32', 'CrossAttentionUNetHead3', 'FeedFormerHead32_new', 'FeedFormerHead_cat', 'FeedFormerHeadCity'
 ]

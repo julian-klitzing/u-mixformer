@@ -94,9 +94,12 @@ class CrossAttention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
         if self.pool_ratio >= 0:
-            self.pool = nn.AvgPool2d(self.pool_ratio, self.pool_ratio)
-            self.sr = nn.Conv2d(dim2, dim2, kernel_size=1, stride=1)
-        self.norm = nn.LayerNorm(dim2)
+            self.pool1 = nn.AvgPool2d(2, 2) #query
+            self.pool2 = nn.AvgPool2d(pool_ratio * 2, pool_ratio * 2) #key&value
+            self.sr1 = nn.Conv2d(dim1, dim1, kernel_size=1, stride=1)
+            self.sr2 = nn.Conv2d(dim2, dim2, kernel_size=1, stride=1)
+        self.norm1 = nn.LayerNorm(dim1)
+        self.norm2 = nn.LayerNorm(dim2)
         self.act = nn.GELU()
         self.apply(self._init_weights)
 
@@ -115,20 +118,24 @@ class CrossAttention(nn.Module):
             if m.bias is not None:
                 m.bias.data.zero_()
 
-    def forward(self, x, y, H2, W2):
+    def forward(self, x, y, H2, W2, H1, W1):
         B1, N1, C1 = x.shape
         B2, N2, C2 = y.shape
         q = self.q(x).reshape(B1, N1, self.num_heads, C1 // self.num_heads).permute(0, 2, 1, 3)
 
-        if self.pool_ratio >= 0:
-            # x_ = y.permute(0, 2, 1).reshape(B2, C2, H2, W2)
-            # x_ = self.sr(self.pool(x_)).reshape(B2, C2, -1).permute(0, 2, 1)
-            x_ = self.norm(y)
-            x_ = self.act(y)
-        else:
-            x_ = y
-            
-        kv = self.kv(x_).reshape(B1, -1, 2, self.num_heads, C1 // self.num_heads).permute(2, 0, 3, 1, 4) #여기에다가 rollout을 넣는다면?
+        x_ = x.permute(0, 2, 1).reshape(B1, C1, H1, W1)
+        x_ = self.sr1(self.pool1(x_)).reshape(B1, C1, -1).permute(0, 2, 1)
+        x_ = self.norm1(x_)
+        x_ = self.act(x_)
+        N1 = N1 // (2 * 2)
+        q = self.q(x_).reshape(B1, N1, self.num_heads, C1 // self.num_heads).permute(0, 2, 1, 3)
+
+        # y_ = y.permute(0, 2, 1).reshape(B2, C2, H2, W2)
+        # y_ = self.sr2(self.pool2(y_)).reshape(B2, C2, -1).permute(0, 2, 1)
+        # y_ = self.norm2(y_)
+        y_ = self.norm2(y)
+        y_ = self.act(y_)
+        kv = self.kv(y_).reshape(B1, -1, 2, self.num_heads, C1 // self.num_heads).permute(2, 0, 3, 1, 4)
         k, v = kv[0], kv[1]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -138,6 +145,9 @@ class CrossAttention(nn.Module):
         x = (attn @ v).transpose(1, 2).reshape(B1, N1, C1)
         x = self.proj(x)
         x = self.proj_drop(x)
+        x = x.transpose(1, 2).view(B1, C1, H1 // 2, W1 // 2)
+        x = resize(x, size=(H1, W1), mode='bilinear', align_corners=False)
+        x = x.flatten(2).transpose(1, 2)
 
         return x
 
@@ -177,7 +187,7 @@ class Block(nn.Module):
     def forward(self, x, y, H2, W2, H1, W1):
         x = self.norm1(x)
         y = self.norm2(y)
-        x = x + self.drop_path(self.attn(x, y, H2, W2)) #self.norm2(y)이 F1에 대한 값
+        x = x + self.drop_path(self.attn(x, y, H2, W2, H1, W1)) #self.norm2(y)이 F1에 대한 값
         x = self.norm3(x)
         x = x + self.drop_path(self.mlp(x, H1, W1))
 
@@ -187,90 +197,12 @@ class Block(nn.Module):
         return x
 
 @MODELS.register_module()
-class APFormerHead(BaseDecodeHead):
+class APFormerHeadCity(BaseDecodeHead):
     """
     Attention-Pooling Former
     """
     def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
-        super(APFormerHead, self).__init__(input_transform='multiple_select', **kwargs)
-        assert len(feature_strides) == len(self.in_channels)
-        assert min(feature_strides) == feature_strides[0]
-        self.feature_strides = feature_strides
-
-        c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
-
-        decoder_params = kwargs['decoder_params']
-        embedding_dim = decoder_params['embed_dim']
-
-        self.attn_c4 = Block(dim1=c4_in_channels, dim2=512, num_heads=8, mlp_ratio=4,
-                                drop_path=0.1, pool_ratio=8)
-        self.attn_c3 = Block(dim1=c3_in_channels, dim2=512, num_heads=5, mlp_ratio=4,
-                                drop_path=0.1, pool_ratio=4)
-        self.attn_c2 = Block(dim1=c2_in_channels, dim2=512, num_heads=2, mlp_ratio=4,
-                                drop_path=0.1, pool_ratio=2)
-        self.attn_c1 = Block(dim1=c1_in_channels, dim2=512, num_heads=1, mlp_ratio=4,
-                                drop_path=0.1, pool_ratio=1)
-        self.cat_key = CatKey(pool_ratio=[1, 2, 4, 8], dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
-
-        self.linear_fuse = ConvModule(
-            in_channels=(c1_in_channels + c2_in_channels + c3_in_channels + c4_in_channels),
-            out_channels=embedding_dim,
-            kernel_size=1,
-            norm_cfg=dict(type='SyncBN', requires_grad=True)
-        )
-
-        self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
-
-    def forward(self, inputs):
-        x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
-        c1, c2, c3, c4 = x
-        ############## MLP decoder on C1-C4 ###########
-        n, _, h4, w4 = c4.shape
-        _, _, h3, w3 = c3.shape
-        _, _, h2, w2 = c2.shape
-        _, _, h1, w1 = c1.shape
-
-        c_key = self.cat_key([c4, c3, c2, c1])
-        c1 = c1.flatten(2).transpose(1, 2)
-        c2 = c2.flatten(2).transpose(1, 2)
-        c3 = c3.flatten(2).transpose(1, 2)
-        c4 = c4.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, patches]
-        c_key = c_key.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, patches]
-
-        _c4 = self.attn_c4(c4, c_key, h4, w4, h4, w4)
-        # _c4 += c4
-        _c4 = _c4.permute(0,2,1).reshape(n, -1, h4, w4)
-        _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
-
-        _c3 = self.attn_c3(c3, c_key, h4, w4, h3, w3)
-        # _c3 += c3
-        _c3 = _c3.permute(0,2,1).reshape(n, -1, h3, w3)
-        _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
-
-        _c2 = self.attn_c2(c2, c_key, h4, w4, h2, w2)
-        # _c2 += c2
-        _c2 = _c2.permute(0,2,1).reshape(n, -1, h2, w2)
-        _c2 = resize(_c2, size=(h1, w1), mode='bilinear', align_corners=False)
-
-        _c1 = self.attn_c1(c1, c_key, h4, w4, h1, w1)
-        # _c1 += c1
-        _c1 = c1.permute(0, 2, 1).reshape(n, -1, h1, w1)
-        _c1 = resize(_c1, size=(h1, w1), mode='bilinear', align_corners=False)
-
-        _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
-
-        x = self.dropout(_c)
-        x = self.linear_pred(x)
-
-        return x
-    
-@MODELS.register_module()
-class APFormerHead2(BaseDecodeHead):
-    """
-    Attention-Pooling Former
-    """
-    def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
-        super(APFormerHead2, self).__init__(input_transform='multiple_select', **kwargs)
+        super(APFormerHeadCity, self).__init__(input_transform='multiple_select', **kwargs)
         assert len(feature_strides) == len(self.in_channels)
         assert min(feature_strides) == feature_strides[0]
         self.feature_strides = feature_strides
