@@ -13,10 +13,8 @@ model = dict(
     decode_head=dict(
         type='APFormerHeadCity',  #FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new'
         feature_strides=[4, 8, 16, 32],
-        # in_channels=[32, 64, 160, 256],
-        # in_index=[0, 1, 2, 3],
-        # channels=128,
-        # num_classes=150
+        in_channels=[32, 64, 160, 256],
+        in_index=[0, 1, 2, 3],
         decoder_params=dict(embed_dim=128)
     ),
     test_cfg=dict(mode='slide', crop_size=(1024, 1024), stride=(768, 768))

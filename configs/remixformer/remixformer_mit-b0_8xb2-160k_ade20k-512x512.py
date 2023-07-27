@@ -13,12 +13,10 @@ model = dict(
     decode_head=dict(
         type='APFormerHead2',  #FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new'
         feature_strides=[4, 8, 16, 32],
-        # in_channels=[32, 64, 160, 256],
-        # in_index=[0, 1, 2, 3],
-        # channels=128,
+        in_channels=[32, 64, 160, 256],
+        in_index=[0, 1, 2, 3],
         decoder_params=dict(embed_dim=128),
-        num_classes=150,
-        loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0)
+        num_classes=150
         )
     )
 
