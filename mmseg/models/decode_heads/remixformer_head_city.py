@@ -60,19 +60,21 @@ class Mlp(nn.Module):
         x = self.fc2(x)
         x = self.drop(x)
         return x
-    
-class CatKey(nn.Module):
 
+class CatKey(nn.Module):
     def __init__(self, pool_ratio=[1,2,4,8], dim=[256,160,64,32]):
         super().__init__()
-        self.n_pool = len(pool_ratio)
-        self.sr_list = nn.ModuleList([nn.Conv2d(dim[i], dim[i], kernel_size=1, stride=1) for i in range(1, self.n_pool)])
-        self.pool_list = nn.ModuleList([nn.AvgPool2d(pool_ratio[i], pool_ratio[i], ceil_mode=True) for i in range(1, self.n_pool)])
+        self.pool_ratio = pool_ratio
+        self.sr_list = nn.ModuleList([nn.Conv2d(dim[i], dim[i], kernel_size=1, stride=1) if self.pool_ratio[i] > 1 else None for i in range(len(self.pool_ratio))])
+        self.pool_list = nn.ModuleList([nn.AvgPool2d(self.pool_ratio[i], self.pool_ratio[i], ceil_mode=True) if self.pool_ratio[i] > 1 else None for i in range(len(self.pool_ratio))])
 
     def forward(self, x):
-        out_list = [x[0]]
-        for i in range(self.n_pool-1):
-            out_list.append(self.sr_list[i](self.pool_list[i](x[i+1])))
+        out_list = []
+        for i in range(len(self.pool_ratio)):
+            if self.pool_ratio[i] > 1:
+                out_list.append(self.sr_list[i](self.pool_list[i](x[i])))
+            else:
+                out_list.append(x[i])
         return torch.cat(out_list, dim=1)
 
 class CrossAttention(nn.Module):
