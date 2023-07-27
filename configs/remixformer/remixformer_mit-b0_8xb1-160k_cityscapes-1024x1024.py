@@ -2,14 +2,14 @@ _base_ = [
     '../_base_/models/segformer_mit-b0.py', '../_base_/datasets/cityscapes_1024x1024.py',
     '../_base_/default_runtime.py', '../_base_/schedules/schedule_160k_adamw.py' #'../../_base_/schedules/schedule_160k.py'
 ]
-#load_from = "checkpoints/segmentation/feedformer/ade20k/B0/iter_16000_wo.pth"
+checkpoint = 'https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/segformer/mit_b0_20220624-7e0fe6dd.pth'  # noqa
 randomness = dict(seed=0) #seed setup
 find_unused_parameters = True #find it in mmcv
 crop_size = (1024, 1024)
 data_preprocessor = dict(size=crop_size)
 model = dict(
     data_preprocessor=data_preprocessor,
-    pretrained='checkpoints/classification/mit_b0.pth',
+    backbone=dict(init_cfg=dict(type='Pretrained', checkpoint=checkpoint)),
     decode_head=dict(
         type='APFormerHeadCity',  #FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new'
         feature_strides=[4, 8, 16, 32],
