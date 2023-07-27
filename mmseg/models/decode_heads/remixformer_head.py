@@ -279,17 +279,18 @@ class APFormerHead2(BaseDecodeHead):
         self.feature_strides = feature_strides
 
         c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
+        tot_channels = sum(self.in_channels)
 
         decoder_params = kwargs['decoder_params']
         embedding_dim = decoder_params['embed_dim']
 
-        self.attn_c4 = Block(dim1=c4_in_channels, dim2=512, num_heads=8, mlp_ratio=4,
+        self.attn_c4 = Block(dim1=c4_in_channels, dim2=tot_channels, num_heads=8, mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=8)
-        self.attn_c3 = Block(dim1=c3_in_channels, dim2=512, num_heads=5, mlp_ratio=4,
+        self.attn_c3 = Block(dim1=c3_in_channels, dim2=tot_channels, num_heads=5, mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=4)
-        self.attn_c2 = Block(dim1=c2_in_channels, dim2=512, num_heads=2, mlp_ratio=4,
+        self.attn_c2 = Block(dim1=c2_in_channels, dim2=tot_channels, num_heads=2, mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=2)
-        self.attn_c1 = Block(dim1=c1_in_channels, dim2=512, num_heads=1, mlp_ratio=4,
+        self.attn_c1 = Block(dim1=c1_in_channels, dim2=tot_channels, num_heads=1, mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=1)
         pool_ratio = [1, 2, 4, 8]
         self.cat_key1 = CatKey(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
@@ -298,7 +299,7 @@ class APFormerHead2(BaseDecodeHead):
         self.cat_key4 = CatKey(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
 
         self.linear_fuse = ConvModule(
-            in_channels=(c1_in_channels + c2_in_channels + c3_in_channels + c4_in_channels),
+            in_channels=tot_channels,
             out_channels=embedding_dim,
             kernel_size=1,
             norm_cfg=dict(type='SyncBN', requires_grad=True)
