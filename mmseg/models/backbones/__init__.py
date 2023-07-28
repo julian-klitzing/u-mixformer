@@ -25,13 +25,13 @@ from .vit import VisionTransformer
 from .mit_eca import MixVisionTransformer_new
 # from .mix_transformer import mit_b0, mit_b1, mit_b2, mit_b3, mit_b4, mit_b5 #for feedformer
 from .mit import EfficientMultiheadAttention
-from .mit_btn import MixVisionTransformer_btn
+from .lvt import lvt
 
 __all__ = [
     'ResNet', 'ResNetV1c', 'ResNetV1d', 'ResNeXt', 'HRNet', 'FastSCNN',
     'ResNeSt', 'MobileNetV2', 'UNet', 'CGNet', 'MobileNetV3',
     'VisionTransformer', 'SwinTransformer', 'MixVisionTransformer', 'MixVisionTransformer_new',
     'BiSeNetV1', 'BiSeNetV2', 'ICNet', 'TIMMBackbone', 'ERFNet', 'PCPVT',
-    'SVT', 'STDCNet', 'STDCContextPathNet', 'BEiT', 'MAE', 'PIDNet', 'MSCAN',
+    'SVT', 'STDCNet', 'STDCContextPathNet', 'BEiT', 'MAE', 'PIDNet', 'MSCAN', 'lvt'
     # 'mit_b0', 'mit_b1', 'mit_b2', 'mit_b3', 'mit_b4', 'mit_b5'
 ]
