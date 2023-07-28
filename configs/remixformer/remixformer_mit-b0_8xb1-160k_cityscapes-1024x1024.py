@@ -1,6 +1,6 @@
 _base_ = [
     '../_base_/models/segformer_mit-b0.py', '../_base_/datasets/cityscapes_1024x1024.py',
-    '../_base_/default_runtime.py', '../_base_/schedules/schedule_160k_adamw.py' #'../../_base_/schedules/schedule_160k.py'
+    '../_base_/default_runtime.py', '../_base_/schedules/schedule_160k_adamw.py'
 ]
 checkpoint = 'https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/segformer/mit_b0_20220624-7e0fe6dd.pth'  # noqa
 randomness = dict(seed=0) #seed setup
