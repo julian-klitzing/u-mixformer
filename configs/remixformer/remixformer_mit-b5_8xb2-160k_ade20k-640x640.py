@@ -34,5 +34,10 @@ model = dict(
     data_preprocessor=data_preprocessor,
     backbone=dict(
         init_cfg=dict(type='Pretrained', checkpoint=checkpoint),
-        embed_dims=64, num_heads=[1, 2, 5, 8], num_layers=[3, 6, 40, 3]),
-    decode_head=dict(in_channels=[64, 128, 320, 512]))
+        embed_dims=64, num_heads=[1, 2, 5, 8], 
+        num_layers=[3, 6, 40, 3]),
+    decode_head=dict(
+        in_channels=[64, 128, 320, 512],
+        decoder_params=dict(embed_dim=768),
+        )
+)
