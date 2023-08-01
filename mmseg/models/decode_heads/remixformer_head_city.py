@@ -216,16 +216,18 @@ class APFormerHeadCity(BaseDecodeHead):
 
         decoder_params = kwargs['decoder_params']
         embedding_dim = decoder_params['embed_dim']
+        num_heads = decoder_params['num_heads']
+        pool_ratio = decoder_params['pool_ratio']
 
-        self.attn_c4 = Block(dim1=c4_in_channels, dim2=tot_channels, num_heads=8, mlp_ratio=4,
+        self.attn_c4 = Block(dim1=c4_in_channels, dim2=tot_channels, num_heads=num_heads[0], mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=8)
-        self.attn_c3 = Block(dim1=c3_in_channels, dim2=tot_channels, num_heads=5, mlp_ratio=4,
+        self.attn_c3 = Block(dim1=c3_in_channels, dim2=tot_channels, num_heads=num_heads[1], mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=4)
-        self.attn_c2 = Block(dim1=c2_in_channels, dim2=tot_channels, num_heads=2, mlp_ratio=4,
+        self.attn_c2 = Block(dim1=c2_in_channels, dim2=tot_channels, num_heads=num_heads[2], mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=2)
-        self.attn_c1 = Block(dim1=c1_in_channels, dim2=tot_channels, num_heads=1, mlp_ratio=4,
+        self.attn_c1 = Block(dim1=c1_in_channels, dim2=tot_channels, num_heads=num_heads[3], mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=1)
-        pool_ratio = [1, 2, 4, 8]
+
         pool_ratio = [i * 2 for i in pool_ratio]
         self.cat_key1 = CatKey(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
         self.cat_key2 = CatKey(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])

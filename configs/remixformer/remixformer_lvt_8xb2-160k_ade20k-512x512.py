@@ -36,7 +36,9 @@ model = dict(
         feature_strides=[4, 8, 16, 32],
         in_channels=[64, 64, 160, 256],
         in_index=[0, 1, 2, 3],
-        decoder_params=dict(embed_dim=128),
+        decoder_params=dict(embed_dim=128,
+                            num_heads=[8, 5, 2, 1],
+                            pool_ratio=[1, 2, 4, 8]),
         num_classes=150
         )
     )

@@ -11,7 +11,7 @@ model = dict(
     data_preprocessor=data_preprocessor,
     backbone=dict(init_cfg=dict(type='Pretrained', checkpoint=checkpoint)),
     decode_head=dict(
-        type='APFormerHeadSingle',  #FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new'
+        type='APFormerHeadMulti', #'APFormerHeadSingle', #FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new'
         feature_strides=[4, 8, 16, 32],
         in_channels=[32, 64, 160, 256],
         in_index=[0, 1, 2, 3],
