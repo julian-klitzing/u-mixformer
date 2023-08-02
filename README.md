@@ -12,7 +12,24 @@ Please refer to [get_started.md](docs/en/get_started.md#installation) for instal
 
 ## Training
 
+```
+# Single-gpu training
+python tools/train.py configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py
+
+# Multi-gpu training
+./tools/dist_train.sh configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py <GPU_NUM>
+```
+
 ## Evaluation
+
+```
+# Single-gpu training
+python tools/test.py configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py /path/to/checkpoint_file
+
+# Multi-gpu training
+./tools/dist_test.sh configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py /path/to/checkpoint_file <GPU_NUM>
+```
+
 
 ## Visualization
 
