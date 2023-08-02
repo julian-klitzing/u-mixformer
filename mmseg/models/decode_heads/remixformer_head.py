@@ -79,6 +79,30 @@ class CatKey(nn.Module):
                 out_list.append(x[i])
         return torch.cat(out_list, dim=1)
 
+class CatKeyMulti(nn.Module):
+    def __init__(self, pool_ratio=[1,2,4,8], dim=[256,160,64,32]):
+        super().__init__()
+        self.pool_ratio = pool_ratio
+        self.sr_list = nn.ModuleList([nn.Conv2d(dim[i], dim[i], kernel_size=1, stride=1) for i in range(len(self.pool_ratio)) if self.pool_ratio[i] > 1])
+        self.pool_list = nn.ModuleList([nn.AvgPool2d(self.pool_ratio[i], self.pool_ratio[i], ceil_mode=True) for i in range(len(self.pool_ratio)) if self.pool_ratio[i] > 1])
+        for _ in range(4):
+            self.sr_list.append(nn.Conv2d(dim[1], dim[1], kernel_size=1, stride=1))
+            self.pool_list.append(nn.AvgPool2d(self.pool_ratio[1], self.pool_ratio[1], ceil_mode=True))
+
+    def forward(self, x, xMulti):
+        out_list = []
+        cnt = 0
+        for i in range(len(self.pool_ratio)):
+            if self.pool_ratio[i] > 1:
+                out_list.append(self.sr_list[cnt](self.pool_list[cnt](x[i])))
+                cnt += 1
+            else:
+                out_list.append(x[i])
+        for l in range(len(xMulti)): #for the middle feature at stage 3
+            out_list.append(self.sr_list[cnt](self.pool_list[cnt](xMulti[l])))
+            cnt += 1
+        return torch.cat(out_list, dim=1)
+
 class CrossAttention(nn.Module):
     def __init__(self, dim1, dim2, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., pool_ratio=16):
         super().__init__()
@@ -356,6 +380,94 @@ class APFormerHead2(BaseDecodeHead):
 
         return x
 
+@MODELS.register_module()
+class APFormerHeadMulti(BaseDecodeHead):
+    """
+    Attention-Pooling Former
+    """
+    def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
+        super(APFormerHeadMulti, self).__init__(input_transform='multiple_select', **kwargs)
+        assert len(feature_strides) == len(self.in_channels)
+        assert min(feature_strides) == feature_strides[0]
+        self.feature_strides = feature_strides
+
+        c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
+        tot_channels = sum(self.in_channels)
+        num_Multi = 4
+
+        decoder_params = kwargs['decoder_params']
+        embedding_dim = decoder_params['embed_dim']
+        num_heads = decoder_params['num_heads']
+        pool_ratio = decoder_params['pool_ratio']
+
+        self.attn_c4 = Block(dim1=c4_in_channels, dim2=tot_channels+c3_in_channels*num_Multi, num_heads=num_heads[0], mlp_ratio=4,
+                                drop_path=0.1, pool_ratio=8)
+        self.attn_c3 = Block(dim1=c3_in_channels, dim2=tot_channels+c3_in_channels*num_Multi, num_heads=num_heads[1], mlp_ratio=4,
+                                drop_path=0.1, pool_ratio=4)
+        self.attn_c2 = Block(dim1=c2_in_channels, dim2=tot_channels+c3_in_channels*num_Multi, num_heads=num_heads[2], mlp_ratio=4,
+                                drop_path=0.1, pool_ratio=2)
+        self.attn_c1 = Block(dim1=c1_in_channels, dim2=tot_channels+c3_in_channels*num_Multi, num_heads=num_heads[3], mlp_ratio=4,
+                                drop_path=0.1, pool_ratio=1)
+
+        self.cat_key1 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
+        self.cat_key2 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
+        self.cat_key3 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
+        self.cat_key4 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
+
+        self.linear_fuse = ConvModule(
+            in_channels=tot_channels,
+            out_channels=embedding_dim,
+            kernel_size=1,
+            norm_cfg=dict(type='SyncBN', requires_grad=True)
+        )
+
+        self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
+
+    def forward(self, inputs):
+        x = self._transform_inputs(inputs[0])  # len=4, 1/4,1/8,1/16,1/32
+        c1, c2, c3, c4 = x
+        xMulti = inputs[1]
+        ############## MLP decoder on C1-C4 ###########
+        n, _, h4, w4 = c4.shape
+        _, _, h3, w3 = c3.shape
+        _, _, h2, w2 = c2.shape
+        _, _, h1, w1 = c1.shape
+
+        c_key = self.cat_key1([c4, c3, c2, c1], xMulti)
+        c_key = c_key.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, channels]
+        c4 = c4.flatten(2).transpose(1, 2)
+        _c4 = self.attn_c4(c4, c_key, h4, w4, h4, w4)
+
+        _c4 = _c4.permute(0,2,1).reshape(n, -1, h4, w4)
+        c_key = self.cat_key2([_c4, c3, c2, c1], xMulti)
+        c_key = c_key.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, channels]
+        c3 = c3.flatten(2).transpose(1, 2)
+        _c3 = self.attn_c3(c3, c_key, h4, w4, h3, w3)
+
+        _c3 = _c3.permute(0,2,1).reshape(n, -1, h3, w3)
+        c_key = self.cat_key3([_c4, _c3, c2, c1], xMulti)
+        c_key = c_key.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, channels]
+        c2 = c2.flatten(2).transpose(1, 2)
+        _c2 = self.attn_c2(c2, c_key, h4, w4, h2, w2)
+
+        _c2 = _c2.permute(0,2,1).reshape(n, -1, h2, w2)
+        c_key = self.cat_key4([_c4, _c3, _c2, c1], xMulti)
+        c_key = c_key.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, channels]
+        c1 = c1.flatten(2).transpose(1, 2)
+        _c1 = self.attn_c1(c1, c_key, h4, w4, h1, w1)
+
+        _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
+        _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
+        _c2 = resize(_c2, size=(h1,w1), mode='bilinear', align_corners=False)
+        _c1 = _c1.permute(0,2,1).reshape(n, -1, h1, w1)
+
+        _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
+
+        x = self.dropout(_c)
+        x = self.linear_pred(x)
+
+        return x
+
 class CatKey_single(nn.Module):
     def __init__(self, pool_ratio=1, dim=1):
         super().__init__()
@@ -438,90 +550,6 @@ class APFormerHeadSingle(BaseDecodeHead): #single key + replacement
         c1 = c1.flatten(2).transpose(1, 2)
         _c1 = self.attn_c1(c1, c_key, h4, w4, h1, w1)
 
-        _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
-        _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
-        _c2 = resize(_c2, size=(h1,w1), mode='bilinear', align_corners=False)
-        _c1 = _c1.permute(0,2,1).reshape(n, -1, h1, w1)
-
-        _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
-
-        x = self.dropout(_c)
-        x = self.linear_pred(x)
-
-        return x
-    
-@MODELS.register_module()
-class APFormerHeadMulti(BaseDecodeHead): #multiple key (except for the current stage) without replacement
-    """
-    Attention-Pooling Former
-    """
-    def __init__(self, feature_strides, pool_scales=(1, 2, 3, 6), **kwargs):
-        super(APFormerHeadMulti, self).__init__(input_transform='multiple_select', **kwargs)
-        assert len(feature_strides) == len(self.in_channels)
-        assert min(feature_strides) == feature_strides[0]
-        self.feature_strides = feature_strides
-
-        c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
-        tot_channels = sum(self.in_channels)
-
-        decoder_params = kwargs['decoder_params']
-        embedding_dim = decoder_params['embed_dim']
-
-        self.attn_c4 = Block(dim1=c4_in_channels, dim2=c3_in_channels + c2_in_channels + c1_in_channels, 
-                             num_heads=8, mlp_ratio=4, drop_path=0.1, pool_ratio=8)
-        self.attn_c3 = Block(dim1=c3_in_channels, dim2=c4_in_channels + c2_in_channels + c1_in_channels, 
-                             num_heads=5, mlp_ratio=4, drop_path=0.1, pool_ratio=4)
-        self.attn_c2 = Block(dim1=c2_in_channels, dim2=c4_in_channels + c3_in_channels + c1_in_channels, 
-                             num_heads=2, mlp_ratio=4, drop_path=0.1, pool_ratio=2)
-        self.attn_c1 = Block(dim1=c1_in_channels, dim2=c4_in_channels + c3_in_channels + c2_in_channels,
-                              num_heads=1, mlp_ratio=4, drop_path=0.1, pool_ratio=1)
-
-        self.cat_key1 = CatKey(pool_ratio=[2, 4, 8], dim=[c3_in_channels, c2_in_channels, c1_in_channels])
-        self.cat_key2 = CatKey(pool_ratio=[1, 4, 8], dim=[c4_in_channels, c2_in_channels, c1_in_channels])
-        self.cat_key3 = CatKey(pool_ratio=[1, 2, 8], dim=[c4_in_channels, c3_in_channels, c1_in_channels])
-        self.cat_key4 = CatKey(pool_ratio=[1, 2, 4], dim=[c4_in_channels, c3_in_channels, c2_in_channels])
-
-        self.linear_fuse = ConvModule(
-            in_channels=tot_channels,
-            out_channels=embedding_dim,
-            kernel_size=1,
-            norm_cfg=dict(type='SyncBN', requires_grad=True)
-        )
-
-        self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
-
-    def forward(self, inputs):
-        x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
-        c1, c2, c3, c4 = x
-        ############## MLP decoder on C1-C4 ###########
-        n, _, h4, w4 = c4.shape
-        _, _, h3, w3 = c3.shape
-        _, _, h2, w2 = c2.shape
-        _, _, h1, w1 = c1.shape
-
-        c_key1 = self.cat_key1([c3, c2, c1])
-        c_key2 = self.cat_key2([c4, c2, c1])
-        c_key3 = self.cat_key3([c4, c3, c1])
-        c_key4 = self.cat_key4([c4, c3, c2])
-
-        c_key1 = c_key1.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, channels]
-        c_key2 = c_key2.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, channels]
-        c_key3 = c_key3.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, channels]
-        c_key4 = c_key4.flatten(2).transpose(1, 2) #shape: [batch, h1*w1, channels]
-
-        c4 = c4.flatten(2).transpose(1, 2)
-        c3 = c3.flatten(2).transpose(1, 2)
-        c2 = c2.flatten(2).transpose(1, 2)
-        c1 = c1.flatten(2).transpose(1, 2)
-
-        _c4 = self.attn_c4(c4, c_key1, h4, w4, h4, w4)
-        _c3 = self.attn_c3(c3, c_key2, h4, w4, h3, w3)
-        _c2 = self.attn_c2(c2, c_key3, h4, w4, h2, w2)
-        _c1 = self.attn_c1(c1, c_key4, h4, w4, h1, w1)
-
-        _c4 = _c4.permute(0,2,1).reshape(n, -1, h4, w4)
-        _c3 = _c3.permute(0,2,1).reshape(n, -1, h3, w3)
-        _c2 = _c2.permute(0,2,1).reshape(n, -1, h2, w2)
         _c4 = resize(_c4, size=(h1,w1), mode='bilinear', align_corners=False)
         _c3 = resize(_c3, size=(h1,w1), mode='bilinear', align_corners=False)
         _c2 = resize(_c2, size=(h1,w1), mode='bilinear', align_corners=False)

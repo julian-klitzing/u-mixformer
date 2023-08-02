@@ -80,10 +80,8 @@ class MixFFN(BaseModule):
             dropout_layer) if dropout_layer else torch.nn.Identity()
 
     def forward(self, x, hw_shape, identity=None):
-        B, N, C = x.shape
         out = nlc_to_nchw(x, hw_shape)
         out = self.layers(out)
-
         out = nchw_to_nlc(out)
         if identity is None:
             identity = x
@@ -156,11 +154,7 @@ class EfficientMultiheadAttention(MultiheadAttention):
                           'future. Please upgrade your mmcv.')
             self.forward = self.legacy_forward
 
-        self.gamma_btn = nn.Parameter(1. * torch.ones(embed_dims), requires_grad=True)
-        self.act = nn.Sigmoid() #nn.Tanh()
-        
-
-    def forward(self, x, hw_shape, identity=None, gamma = False):
+    def forward(self, x, hw_shape, identity=None):
 
         x_q = x
         if self.sr_ratio > 1:
@@ -189,10 +183,7 @@ class EfficientMultiheadAttention(MultiheadAttention):
         if self.batch_first:
             out = out.transpose(0, 1)
 
-        if gamma:
-            return identity + self.dropout_layer(self.act(self.gamma_btn) * self.proj_drop(out))
-        else:
-            return identity + self.dropout_layer(self.proj_drop(out))
+        return identity + self.dropout_layer(self.proj_drop(out))
 
     def legacy_forward(self, x, hw_shape, identity=None):
         """multi head attention forward in mmcv version < 1.3.17."""
@@ -219,130 +210,6 @@ class EfficientMultiheadAttention(MultiheadAttention):
 
         return identity + self.dropout_layer(self.proj_drop(out))
 
-class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0., linear=False):
-        super().__init__()
-        out_features = out_features or in_features
-        hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
-        self.dwconv = DWConv(hidden_features)
-        self.gamma = nn.Parameter(torch.ones(hidden_features), requires_grad=True)
-        self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features)
-        self.drop = nn.Dropout(drop)
-        self.linear = linear
-        if self.linear:
-            self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, x, H, W):
-        x = self.fc1(x)
-        if self.linear:
-            x = self.relu(x)
-        x = self.drop(self.gamma * self.dwconv(x, H, W)) + x
-        x = self.fc2(x)
-        x = self.drop(x)
-        return x
-    
-class DWConv(nn.Module):
-    def __init__(self, in_features, out_features=None, act_layer=nn.GELU, kernel_size=3):
-        super().__init__()
-        out_features = out_features or in_features
-
-        padding = kernel_size // 2
-
-        self.conv1 = torch.nn.Conv2d(
-            in_features, in_features, kernel_size=kernel_size, padding=padding, groups=in_features)
-        self.act = act_layer()
-        self.bn = nn.BatchNorm2d(in_features)
-        self.conv2 = torch.nn.Conv2d(
-            in_features, out_features, kernel_size=kernel_size, padding=padding, groups=out_features)
-
-    def forward(self, x, H: int, W: int):
-        B, N, C = x.shape
-        x = x.permute(0, 2, 1).reshape(B, C, H, W)
-        x = self.conv1(x)
-        x = self.act(x)
-        x = self.bn(x)
-
-
-        x = self.conv2(x)
-        x = x.reshape(B, C, N).permute(0, 2, 1)
-        return x
-    
-class ChannelAttention(MultiheadAttention):
-    def __init__(self, embed_dims, num_heads=8, qkv_bias=False, attn_drop=0., linear=False, drop_path=0., proj_drop=0.,
-                 mlp_hidden_dim=None, act_layer=nn.GELU, drop=0., norm_layer=nn.LayerNorm, cha_sr_ratio=1, c_head_num=None, 
-                 dropout_layer=None, act_cfg=None):
-        super().__init__(embed_dims,
-            num_heads,
-            attn_drop,
-            proj_drop,
-            dropout_layer=dropout_layer,
-            bias=qkv_bias)
-        
-        assert embed_dims % num_heads == 0, f"dim {embed_dims} should be divided by num_heads {num_heads}."
-
-        self.embed_dims = embed_dims
-        num_heads = c_head_num or num_heads
-        self.num_heads = num_heads
-        self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
-
-        self.cha_sr_ratio = cha_sr_ratio if num_heads > 1 else 1
-
-        # config of mlp for v processing
-        self.mlp = Mlp(in_features=embed_dims//self.cha_sr_ratio, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop, linear=linear)
-        self.ffn = MixFFN(
-            embed_dims=embed_dims,
-            feedforward_channels=mlp_hidden_dim,
-            ffn_drop=drop,
-            dropout_layer=dropout_layer,
-            act_cfg=act_cfg)
-
-        self.norm = norm_layer(embed_dims//self.cha_sr_ratio)
-
-        self.q = nn.Linear(embed_dims, embed_dims, bias=qkv_bias)
-
-        self.attn_drop = nn.Dropout(attn_drop)
-
-    def _gen_attn(self, q, k):
-        q = q.softmax(-2).transpose(-1,-2)
-        _, _, N, _  = k.shape
-        # k = torch.nn.functional.adaptive_avg_pool2d(k.softmax(-2), (N, 1))
-        k = torch.nn.functional.adaptive_avg_pool2d(k, (N, 1)).softmax(-2)
-        
-        attn = torch.sigmoid(q @ k)
-        # return attn * self.temperature
-        return attn
-    def forward(self, x, hw_shape, identity=None, gamma = False):
-        if identity is None:
-            identity = x
-
-        H, W = hw_shape[0], hw_shape[1]
-        B, N, C = x.shape
-        q = self.q(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-        k = x.reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-        # v = x.reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-
-        attn = self._gen_attn(q, k)
-        attn = self.attn_drop(attn)
-
-        # Bv, Hd, Nv, Cv = v.shape
-        # v = self.norm(self.mlp(v.transpose(1, 2).reshape(Bv, Nv, Hd*Cv), H, W)).reshape(Bv, Nv, Hd, Cv).transpose(1, 2)
-        _, _, _, Cv = k.shape
-        v = self.ffn(k.transpose(1, 2).reshape(B, -1, C), hw_shape, identity=x).reshape(B, -1, self.num_heads, Cv).transpose(1, 2)
-
-        repeat_time = N // attn.shape[-1]
-        attn = attn.repeat_interleave(repeat_time, dim=-1) if attn.shape[-1] > 1 else attn
-        out = (attn * v.transpose(-1, -2)).permute(0, 3, 1, 2).reshape(B, N, C)
-
-        if gamma:
-            return identity + self.dropout_layer(self.gamma2 * self.proj_drop(out))
-        else:
-            return identity + self.dropout_layer(self.proj_drop(out))
-
-    @torch.jit.ignore
-    def no_weight_decay(self):
-        return {'temperature'}
 
 class TransformerEncoderLayer(BaseModule):
     """Implements one encoder layer in Segformer.
@@ -405,18 +272,6 @@ class TransformerEncoderLayer(BaseModule):
         # The ret[0] of build_norm_layer is norm name.
         self.norm2 = build_norm_layer(norm_cfg, embed_dims)[1]
 
-        self.c_attn = ChannelAttention(
-            embed_dims=embed_dims,
-            num_heads=num_heads,
-            attn_drop=attn_drop_rate,
-            qkv_bias=qkv_bias,
-            mlp_hidden_dim=feedforward_channels,
-            norm_layer=nn.LayerNorm,
-            cha_sr_ratio=sr_ratio,
-            proj_drop=drop_rate,
-            dropout_layer=dict(type='DropPath', drop_prob=drop_path_rate),
-            act_cfg=act_cfg)
-        
         self.ffn = MixFFN(
             embed_dims=embed_dims,
             feedforward_channels=feedforward_channels,
@@ -429,8 +284,7 @@ class TransformerEncoderLayer(BaseModule):
     def forward(self, x, hw_shape):
 
         def _inner_forward(x):
-            x = self.attn(self.norm1(x), hw_shape, identity=x, gamma=True)
-            # x = self.c_attn(self.norm2(x), hw_shape, identity=x, gamma=True)  
+            x = self.attn(self.norm1(x), hw_shape, identity=x)
             x = self.ffn(self.norm2(x), hw_shape, identity=x)
             return x
 
@@ -442,7 +296,7 @@ class TransformerEncoderLayer(BaseModule):
 
 
 @MODELS.register_module()
-class MixVisionTransformer_new(BaseModule):
+class MixVisionTransformerMulti(BaseModule):
     """The backbone of Segformer.
 
     This backbone is the implementation of `SegFormer: Simple and
@@ -583,14 +437,17 @@ class MixVisionTransformer_new(BaseModule):
 
     def forward(self, x):
         outs = []
-
+        mid_outs = []
+        interval = 6
         for i, layer in enumerate(self.layers):
-            x, hw_shape = layer[0](x)
-            for block in layer[1]:
+            x, hw_shape = layer[0](x) #PatchEmbedding
+            for blk_n, block in enumerate(layer[1]):
                 x = block(x, hw_shape)
+                if i == 2 and blk_n != 0 and blk_n % interval == 0:
+                    mid_outs.append(nlc_to_nchw(x, hw_shape))
             x = layer[2](x)
             x = nlc_to_nchw(x, hw_shape)
             if i in self.out_indices:
                 outs.append(x)
 
-        return outs
+        return outs, mid_outs
