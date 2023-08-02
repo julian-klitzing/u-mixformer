@@ -30,10 +30,10 @@ python tools/test.py configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512
 ./tools/dist_test.sh configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py /path/to/checkpoint_file <GPU_NUM>
 ```
 
-## Qualitative test (i.e. visualization)
+## Qualitative Test (i.e. visualization)
 
 ```shell
-python demo/image_demo.py ${IMAGE_FILE} ${CONFIG_FILE} ${CHECKPOINT_FILE} [--out-file ${OUTPUT_IMAGE_NAME} [--device ${DEVICE_NAME}] [--palette-thr ${PALETTE}]
+python demo/image_demo.py ${IMAGE_FILE} ${CONFIG_FILE} ${CHECKPOINT_FILE} [--out-file ${OUTPUT_IMAGE_NAME}] [--device ${DEVICE_NAME}] [--palette-thr ${PALETTE}]
 ```
 
 Example: visualize ```ReMixFormer-B0``` on ```cityscapes```: 
@@ -43,6 +43,23 @@ python demo/image_demo.py demo/demo.png configs/remixformer/remixformer_mit-b0_8
 /path/to/checkpoint_file --out-file demo/output.png --device cuda:0 --palette cityscapes
 ```
 
+## Onnx Model Conversion
+Please first install mmdeploy in another folder and run on mmsegmentation folder
+```shell
+python /path/to/MMDEPLOY_PATH/tools/deploy.py ${DEPLOY_CONFIG_FILE} ${MODEL_CONFIG} ${CHECKPOINT_FILE} ${IMAGE_FILE} \
+[--work-dir ${SAVE_FOLDER_NAME}] [--device ${DEVICE_NAME}] [--dump-info]
+```
+
+Example: Deploy ```ReMixFormer-B0``` on ADE20K into ONNX model: 
+
+```shell
+python /path/to/MMDEPLOY_PATH/tools/deploy.py ../mmdeploy/configs/mmseg/segmentation_onnxruntime_static-512x512.py \
+configs/segformer/segformer_mit-b0_8xb2-160k_ade20k-512x512.py checkpoints/segmentation/segformer/segformer_mit-b0_512x512_160k_ade20k.pth \
+demo/demo.png \
+--work-dir mmdeploy_model/segformer_mit_b0_ade_512x512 \
+--device cuda \
+--dump-info
+```
 
 ## Table
 
