@@ -30,8 +30,19 @@ python tools/test.py configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512
 ./tools/dist_test.sh configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py /path/to/checkpoint_file <GPU_NUM>
 ```
 
+## Qualitative test (i.e. visualization)
 
-## Visualization
+```shell
+python demo/image_demo.py ${IMAGE_FILE} ${CONFIG_FILE} ${CHECKPOINT_FILE} [--out-file ${OUTPUT_IMAGE_NAME} [--device ${DEVICE_NAME}] [--palette-thr ${PALETTE}]
+```
+
+Example: visualize ```ReMixFormer-B0``` on ```cityscapes```: 
+
+```shell
+python demo/image_demo.py demo/demo.png configs/remixformer/remixformer_mit-b0_8xb1-160k_cityscapes-1024x1024.py \
+/path/to/checkpoint_file --out-file demo/output.png --device cuda:0 --palette cityscapes
+```
+
 
 ## Table
 
