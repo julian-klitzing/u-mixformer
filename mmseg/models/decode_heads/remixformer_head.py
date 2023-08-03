@@ -80,12 +80,12 @@ class CatKey(nn.Module):
         return torch.cat(out_list, dim=1)
 
 class CatKeyMulti(nn.Module):
-    def __init__(self, pool_ratio=[1,2,4,8], dim=[256,160,64,32]):
+    def __init__(self, pool_ratio=[1,2,4,8], dim=[256,160,64,32], num_feat = 4):
         super().__init__()
         self.pool_ratio = pool_ratio
         self.sr_list = nn.ModuleList([nn.Conv2d(dim[i], dim[i], kernel_size=1, stride=1) for i in range(len(self.pool_ratio)) if self.pool_ratio[i] > 1])
         self.pool_list = nn.ModuleList([nn.AvgPool2d(self.pool_ratio[i], self.pool_ratio[i], ceil_mode=True) for i in range(len(self.pool_ratio)) if self.pool_ratio[i] > 1])
-        for _ in range(4):
+        for _ in range(num_feat):
             self.sr_list.append(nn.Conv2d(dim[1], dim[1], kernel_size=1, stride=1))
             self.pool_list.append(nn.AvgPool2d(self.pool_ratio[1], self.pool_ratio[1], ceil_mode=True))
 
@@ -409,10 +409,10 @@ class APFormerHeadMulti(BaseDecodeHead):
         self.attn_c1 = Block(dim1=c1_in_channels, dim2=tot_channels+c3_in_channels*num_Multi, num_heads=num_heads[3], mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=1)
 
-        self.cat_key1 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
-        self.cat_key2 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
-        self.cat_key3 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
-        self.cat_key4 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels])
+        self.cat_key1 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels], num_feat = num_Multi)
+        self.cat_key2 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels], num_feat = num_Multi)
+        self.cat_key3 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels], num_feat = num_Multi)
+        self.cat_key4 = CatKeyMulti(pool_ratio=pool_ratio, dim=[c4_in_channels, c3_in_channels, c2_in_channels, c1_in_channels], num_feat = num_Multi)
 
         self.linear_fuse = ConvModule(
             in_channels=tot_channels,

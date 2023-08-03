@@ -356,7 +356,7 @@ class MixVisionTransformerMulti(BaseModule):
                  norm_cfg=dict(type='LN', eps=1e-6),
                  pretrained=None,
                  init_cfg=None,
-                 with_cp=False):
+                 with_cp=False, **kwargs):
         super().__init__(init_cfg=init_cfg)
 
         assert not (init_cfg and pretrained), \
@@ -381,6 +381,8 @@ class MixVisionTransformerMulti(BaseModule):
 
         self.out_indices = out_indices
         assert max(out_indices) < self.num_stages
+        encoder_params = kwargs['encoder_params']
+        self.interval = encoder_params['interval']
 
         # transformer encoder
         dpr = [
@@ -438,12 +440,11 @@ class MixVisionTransformerMulti(BaseModule):
     def forward(self, x):
         outs = []
         mid_outs = []
-        interval = 6
         for i, layer in enumerate(self.layers):
             x, hw_shape = layer[0](x) #PatchEmbedding
             for blk_n, block in enumerate(layer[1]):
                 x = block(x, hw_shape)
-                if i == 2 and blk_n != 0 and blk_n % interval == 0:
+                if i == 2 and blk_n != 0 and blk_n % self.interval == 0:
                     mid_outs.append(nlc_to_nchw(x, hw_shape))
             x = layer[2](x)
             x = nlc_to_nchw(x, hw_shape)

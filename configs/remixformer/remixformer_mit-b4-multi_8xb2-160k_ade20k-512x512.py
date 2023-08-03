@@ -6,7 +6,9 @@ model = dict(
     backbone=dict(
         init_cfg=dict(type='Pretrained', checkpoint=checkpoint),
         embed_dims=64, num_heads=[1, 2, 5, 8], 
-        num_layers=[3, 8, 27, 3]),
+        num_layers=[3, 8, 27, 3],
+        encoder_params=dict(interval=6)
+        ),
     decode_head=dict(
         in_channels=[64, 128, 320, 512],
         decoder_params=dict(embed_dim=768,
