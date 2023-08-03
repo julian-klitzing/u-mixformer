@@ -11,6 +11,7 @@ model = dict(
         in_channels=[64, 128, 320, 512],
         decoder_params=dict(embed_dim=768,
                             num_heads=[8, 5, 2, 1],
-                            pool_ratio=[1, 2, 4, 8]),
+                            pool_ratio=[1, 2, 4, 8],        
+                            num_Multi = 4),
         )
 )

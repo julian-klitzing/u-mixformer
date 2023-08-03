@@ -119,7 +119,7 @@ class SingleIoUMetric(BaseMetric):
         # 두 리스트를 병합하여 저장할 새로운 리스트
         merged_list = []
         save_metric = []
-        file_path = 'paper/segformer_b0_ade.txt'
+        file_path = 'paper/feedformer_b0_ade.txt'
         for i in range(len(self.results)):
             save_metric.append(self.compute_metrics_2(self.results[i:i+1]))
         # 두 리스트의 길이가 같을 때

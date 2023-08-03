@@ -44,6 +44,10 @@ param_scheduler = [
         by_epoch=False,
     )
 ]
+
+# val_evaluator = dict(type='SingleIoUMetric', iou_metrics=['mIoU']) #, output_dir='paper/mIoU')
+# test_evaluator = val_evaluator
+
 train_dataloader = dict(batch_size=16, num_workers=4)
 val_dataloader = dict(batch_size=1, num_workers=4)
 test_dataloader = val_dataloader

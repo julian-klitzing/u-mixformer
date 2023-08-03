@@ -393,12 +393,12 @@ class APFormerHeadMulti(BaseDecodeHead):
 
         c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
         tot_channels = sum(self.in_channels)
-        num_Multi = 4
 
         decoder_params = kwargs['decoder_params']
         embedding_dim = decoder_params['embed_dim']
         num_heads = decoder_params['num_heads']
         pool_ratio = decoder_params['pool_ratio']
+        num_Multi = decoder_params['num_multi']
 
         self.attn_c4 = Block(dim1=c4_in_channels, dim2=tot_channels+c3_in_channels*num_Multi, num_heads=num_heads[0], mlp_ratio=4,
                                 drop_path=0.1, pool_ratio=8)
