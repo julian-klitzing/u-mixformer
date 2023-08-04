@@ -17,7 +17,7 @@ def main():
     parser.add_argument(
         '--opacity',
         type=float,
-        default=0.5,
+        default=0.8,
         help='Opacity of painted segmentation map. In (0, 1] range.')
     parser.add_argument(
         '--title', default='result', help='The image identifier.')
