@@ -15,6 +15,8 @@ from scipy.ndimage import gaussian_filter
 from mmseg.datasets.dataset_wrappers import MultiImageMixDataset
 from mmseg.registry import TRANSFORMS
 
+from imagecorruptions import corrupt
+
 
 @TRANSFORMS.register_module()
 class ResizeToMultiple(BaseTransform):
@@ -81,6 +83,60 @@ class ResizeToMultiple(BaseTransform):
         repr_str = self.__class__.__name__
         repr_str += (f'(size_divisor={self.size_divisor}, '
                      f'interpolation={self.interpolation})')
+        return repr_str
+
+@TRANSFORMS.register_module()
+class Corruptions(object):
+    """Apply image corruptions from https://github.com/bethgelab/imagecorruptions
+
+    Args:
+        mode (str): train/test
+    """
+
+    def __init__(self, mode='test', typ='snow', sev=1):
+        self.version = 'v1.0'
+        self.mode = mode
+        self.typ = typ
+        self.sev = sev
+        self.corruption_cats = dict()
+        self.corruption_cats['blur']    = ['motion_blur',    'defocus_blur',  'glass_blur', 'gaussian_blur']
+        self.corruption_cats['noise']   = ['gaussian_noise', 'impulse_noise', 'shot_noise', 'speckle_noise']
+        self.corruption_cats['digital'] = ['brightness',     'contrast',      'saturate',   'jpeg_compression']
+        self.corruption_cats['weather'] = ['snow',           'spatter',       'fog',        'frost']
+        self.corruption_cats['all']     = ['motion_blur',    'defocus_blur',  'glass_blur', 'gaussian_blur',
+                                           'gaussian_noise', 'impulse_noise', 'shot_noise', 'speckle_noise',
+                                           'brightness',     'contrast',      'saturate',   'jpeg_compression',
+                                           'snow',           'spatter',       'fog',        'frost']
+        self.C = len(self.corruption_cats)
+
+    def __call__(self, results):
+        """Call function to scale the semantic segmentation map.
+
+        Args:
+            results['corrupt_typ'] = self.corrupt_typ
+            results['corrupt_sev'] = self.corrupt_sev
+
+        Returns:
+            dict: Result dict with corrupted image.
+        """
+        if 'corrupt_sev' in results:
+            if self.mode == 'test' and 'corrupt_sev' in results:
+                self.typ = results['corrupt_typ']
+                self.sev = results['corrupt_sev']
+            #elif self.mode == 'train' and 'corrupt_sev' in results:
+            #    typ = self.corruption_cats[results['corrupt_typ']][random.randint(0, C-1)]
+            #    sev = random.randint(0,5)
+        # apply
+        if self.sev > 0:
+            results['img'] = corrupt(results['img'], corruption_name=self.typ, severity=self.sev)
+        
+        return results
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += f'(version={self.version}, ' \
+                    f'mode={self.mode})'
+        
         return repr_str
 
 

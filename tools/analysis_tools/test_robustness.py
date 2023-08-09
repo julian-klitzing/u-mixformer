@@ -10,8 +10,7 @@ from mmengine.evaluator import DumpResults
 from mmengine.fileio import dump
 from mmengine.runner import Runner
 
-from mmdet.engine.hooks.utils import trigger_visualization_hook
-from mmdet.registry import RUNNERS
+from mmseg.registry import RUNNERS
 from tools.analysis_tools.robustness_eval import get_results
 
 
@@ -35,7 +34,7 @@ def parse_args():
             'defocus_blur', 'glass_blur', 'motion_blur', 'zoom_blur', 'snow',
             'frost', 'fog', 'brightness', 'contrast', 'elastic_transform',
             'pixelate', 'jpeg_compression', 'speckle_noise', 'gaussian_blur',
-            'spatter', 'saturate'
+            'spatter', 'saturate', 'UMixFormer'
         ],
         help='corruptions')
     parser.add_argument(
@@ -45,7 +44,8 @@ def parse_args():
         '--severities',
         type=int,
         nargs='+',
-        default=[0, 1, 2, 3, 4, 5],
+        default=[1, 2, 3],
+        # default=[0, 1, 2, 3, 4, 5],
         help='corruption severity levels')
     parser.add_argument(
         '--summaries',
@@ -119,8 +119,6 @@ def main():
     cfg.test_dataloader.dataset.test_mode = True
 
     cfg.load_from = args.checkpoint
-    if args.show or args.show_dir:
-        cfg = trigger_visualization_hook(cfg, args)
 
     # build the runner from config
     if 'runner_type' not in cfg:
@@ -152,6 +150,13 @@ def main():
             'glass_blur', 'motion_blur', 'zoom_blur', 'snow', 'frost', 'fog',
             'brightness', 'contrast', 'elastic_transform', 'pixelate',
             'jpeg_compression'
+        ]
+    elif 'UMixFormer' in args.corruptions:
+        corruptions = [
+            'motion_blur', 'defocus_blur', 'glass_blur', 'gaussian_blur', #Blur
+            'gaussian_noise', 'impulse_noise', 'shot_noise', 'speckle_noise', #Noise
+            'brightness', 'contrast', 'saturate', 'jpeg_compression', #Digital
+            'snow', 'spatter', 'fog', 'frost' #Weather
         ]
     elif 'noise' in args.corruptions:
         corruptions = ['gaussian_noise', 'shot_noise', 'impulse_noise']
