@@ -117,6 +117,7 @@ work_dirs/
 mmseg/.mim
 mmdeploy_model/
 paper/
+temp_dir/
 
 # Pytorch
 *.pth
