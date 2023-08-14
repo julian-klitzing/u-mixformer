@@ -1,8 +1,8 @@
-# ReMixFormer
+# U-MixFormer
 
 ## Introduction
 
-### 🎉 ReMixFormer 🎉
+### U-MixFormer
 
 ![demo image](resources/seg_demo.gif)
 
