@@ -32,20 +32,6 @@ from .setr_mla_head import SETRMLAHead
 from .setr_up_head import SETRUPHead
 from .stdc_head import STDCHead
 from .uper_head import UPerHead
-<<<<<<< HEAD
-from .feedformer_head import FeedFormerHead
-from .medicalunet_head import MedicalUNetHead
-from .caunet_head import CrossAttentionUNetHead
-from .caunet_head_2 import CrossAttentionUNetHead2
-from .caunet_head_3 import CrossAttentionUNetHead3
-from .caunet_head_4 import CrossAttentionUNetHead4
-from .caunet_head_5 import CrossAttentionUNetHead5
-from .feedformer_head import FeedFormerHead, FeedFormerHead_new, FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new
-=======
-from .remixformer_head import APFormerHead, APFormerHead2, APFormerHeadSingle, APFormerHeadMulti
-from .remixformer_head_city import APFormerHeadCity
-from .feedformer_head import FeedFormerHead, FeedFormerHead_new, FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new, FeedFormerHead_cat
->>>>>>> skyeom
 from .caunet_head_3 import CrossAttentionUNetHead3
 from .feedformer_head_city import FeedFormerHeadCity
 
@@ -56,14 +42,7 @@ __all__ = [
     'PointHead', 'APCHead', 'DMHead', 'LRASPPHead', 'SETRUPHead',
     'SETRMLAHead', 'DPTHead', 'SETRMLAHead', 'SegmenterMaskTransformerHead',
     'SegformerHead', 'ISAHead', 'STDCHead', 'IterativeDecodeHead',
-<<<<<<< HEAD
-    'KernelUpdateHead', 'KernelUpdator', 'MaskFormerHead', 'Mask2FormerHead',
-    'LightHamHead', 'PIDHead', 'FeedFormerHead', 'MedicalUNetHead', "CrossAttentionUNetHead",
-    "CrossAttentionUNetHead2", "CrossAttentionUNetHead3", "CrossAttentionUNetHead4",
-    "CrossAttentionUNetHead5", # new
     'FeedFormerHead_new', 'FeedFormerHeadUNet', 'FeedFormerHeadUNetPlus', 'FeedFormerHead32', 'CrossAttentionUNetHead3', 'FeedFormerHead32_new'
-=======
     'KernelUpdateHead', 'KernelUpdator', 'MaskFormerHead', 'Mask2FormerHead', 'APFormerHead', 'APFormerHead2', 'APFormerHeadCity', 'APFormerHeadSingle', 'APFormerHeadMulti',
     'LightHamHead', 'PIDHead', 'FeedFormerHead', 'FeedFormerHead_new', 'FeedFormerHeadUNet', 'FeedFormerHeadUNetPlus', 'FeedFormerHead32', 'CrossAttentionUNetHead3', 'FeedFormerHead32_new', 'FeedFormerHead_cat', 'FeedFormerHeadCity'
->>>>>>> skyeom
 ]

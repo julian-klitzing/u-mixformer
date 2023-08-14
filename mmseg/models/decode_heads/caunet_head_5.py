@@ -256,7 +256,7 @@ class CrossAttentionUNetHead5(BaseDecodeHead):
             norm_cfg=dict(type='SyncBN', requires_grad=True)
         )
 
-        self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
+        # self.linear_pred = nn.Conv2d(embedding_dim, self.num_classes, kernel_size=1)
 
     def forward(self, inputs):
         x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32

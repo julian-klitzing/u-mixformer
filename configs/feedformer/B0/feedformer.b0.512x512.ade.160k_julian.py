@@ -10,7 +10,7 @@ data_preprocessor = dict(size=crop_size)
 model = dict(
     data_preprocessor=data_preprocessor,
     # pretrained='checkpoints/classification/mit_b0.pth',
-    backbone=dict(type="MixVisionTransformer_btn2"),
+    backbone=dict(type="MixVisionTransformerPE"),
     decode_head=dict(
         type='FeedFormerHead',
         feature_strides=[4, 8, 16, 32],
