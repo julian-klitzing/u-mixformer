@@ -1,10 +1,10 @@
 # U-MixFormer
 
 ## Introduction
-
+<!-- 
 ### U-MixFormer
 
-![demo image](resources/seg_demo.gif)
+![demo image](resources/seg_demo.gif) -->
 
 ## Installation
 
