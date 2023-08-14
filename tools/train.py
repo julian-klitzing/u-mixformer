@@ -103,5 +103,6 @@ if __name__ == '__main__':
     main()
 
     # from mmengine.analysis import get_model_complexity_info
-    # analysis_results = get_model_complexity_info(runner.model.cpu(), (3,512,512))
+    # analysis_results = get_model_complexity_info(runner.model.cpu(), (3,512,512)) #For ADE20K
+    # analysis_results = get_model_complexity_info(runner.model.cpu(), (3,2048,1024)) #For cityscapes
     # print(analysis_results['out_table'])

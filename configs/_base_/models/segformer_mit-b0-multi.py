@@ -1,5 +1,6 @@
 # model settings
 norm_cfg = dict(type='SyncBN', requires_grad=True)
+
 data_preprocessor = dict(
     type='SegDataPreProcessor',
     mean=[123.675, 116.28, 103.53],
@@ -12,7 +13,7 @@ model = dict(
     data_preprocessor=data_preprocessor,
     pretrained=None,
     backbone=dict(
-        type='MixVisionTransformer_new', #type='MixVisionTransformer_new',
+        type='MixVisionTransformerMulti',
         in_channels=3,
         embed_dims=32,
         num_stages=4,

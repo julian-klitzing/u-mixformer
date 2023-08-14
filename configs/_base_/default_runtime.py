@@ -5,7 +5,8 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='TensorboardVisBackend')]
+                dict(type='TensorboardVisBackend'),
+                # dict(type='WandbVisBackend')]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
 log_processor = dict(by_epoch=False)

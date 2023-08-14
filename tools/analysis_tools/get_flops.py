@@ -28,7 +28,8 @@ def parse_args():
         '--shape',
         type=int,
         nargs='+',
-        default=[2048, 1024],
+        # default=[2048, 1024], #Cityscape
+        default=[512, 512], #ADE20K
         help='input image size')
     parser.add_argument(
         '--cfg-options',

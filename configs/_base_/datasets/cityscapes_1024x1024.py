@@ -15,12 +15,18 @@ train_pipeline = [
 ]
 test_pipeline = [
     dict(type='LoadImageFromFile'),
+    # dict(type='Corruptions', mode='test', typ='fog', sev=4), #For Cityscapes-C
     dict(type='Resize', scale=(2048, 1024), keep_ratio=True),
     # add loading annotation after ``Resize`` because ground truth
     # does not need to do resize data transform
     dict(type='LoadAnnotations'),
     dict(type='PackSegInputs')
 ]
+#     typ = ['motion_blur',    'defocus_blur',  'glass_blur', 'gaussian_blur',
+#         'gaussian_noise', 'impulse_noise', 'shot_noise', 'speckle_noise',
+#         'brightness',     'contrast',      'saturate',   'jpeg_compression',
+#         'snow',           'spatter',       'fog',        'frost']
+
 train_dataloader = dict(dataset=dict(pipeline=train_pipeline))
 val_dataloader = dict(dataset=dict(pipeline=test_pipeline))
 test_dataloader = val_dataloader

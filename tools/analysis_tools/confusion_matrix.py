@@ -6,9 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import MultipleLocator
 from mmengine import Config, DictAction
-from mmengine.utils import ProgressBar, load
+from mmengine.utils import ProgressBar
+from mmengine.fileio import load
 
-from mmseg.datasets import build_dataset
+from mmdet.registry import DATASETS
 
 
 def parse_args():
@@ -169,7 +170,8 @@ def main():
         for ds_cfg in cfg.data.test:
             ds_cfg.test_mode = True
 
-    dataset = build_dataset(cfg.data.test)
+    # dataset = build_dataset(cfg.data.test)
+    dataset = DATASETS.build(cfg.data.test)
     confusion_matrix = calculate_confusion_matrix(dataset, results)
     plot_confusion_matrix(
         confusion_matrix,
