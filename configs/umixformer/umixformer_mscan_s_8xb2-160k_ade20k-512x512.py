@@ -1,4 +1,4 @@
-_base_ = ['./remixformer_mscan_t_8xb1-160k_cityscapes-1024x1024.py']
+_base_ = ['./umixformer_mscan_t_8xb2-160k_ade20k-512x512.py']
 # model settings
 checkpoint_file = 'https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/segnext/mscan_s_20230227-f33ccdf2.pth'  # noqa
 model = dict(
@@ -15,6 +15,6 @@ model = dict(
         decoder_params=dict(embed_dim=128,
                             num_heads=[8, 5, 2, 1],
                             pool_ratio=[1, 2, 4, 8]),
-        num_classes=19
+        num_classes=150
         )
     )

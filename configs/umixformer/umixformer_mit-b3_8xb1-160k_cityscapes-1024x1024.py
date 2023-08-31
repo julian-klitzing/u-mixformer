@@ -1,4 +1,4 @@
-_base_ = ['./remixformer_mit-b0_8xb1-160k_cityscapes-1024x1024.py']
+_base_ = ['./umixformer_mit-b0_8xb1-160k_cityscapes-1024x1024.py']
 
 # model settings
 checkpoint = 'https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/segformer/mit_b3_20220624-13b1141c.pth'  # noqa

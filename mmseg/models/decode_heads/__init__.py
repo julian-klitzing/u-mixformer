@@ -32,6 +32,9 @@ from .setr_mla_head import SETRMLAHead
 from .setr_up_head import SETRUPHead
 from .stdc_head import STDCHead
 from .uper_head import UPerHead
+from .umixformer_head import APFormerHead, APFormerHead2, APFormerHeadSingle, APFormerHeadMulti
+from .umixformer_head_city import APFormerHeadCity
+from .feedformer_head import FeedFormerHead, FeedFormerHead_new, FeedFormerHeadUNet, FeedFormerHeadUNetPlus, FeedFormerHead32, FeedFormerHead32_new, FeedFormerHead_cat
 from .caunet_head_3 import CrossAttentionUNetHead3
 from .feedformer_head_city import FeedFormerHeadCity
 
