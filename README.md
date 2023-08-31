@@ -4,7 +4,14 @@
 
 ### 🎉 ReMixFormer 🎉
 
-![demo image](resources/seg_demo.gif)
+<!-- ![image](FeedFormer-master/main_fig.png) -->
+<div align="center">
+  <img src="./main_figure.png" height="400">
+</div>
+<p align="center">
+  Figure 1: Main concept of FeedFormer.
+</p>
+
 
 ## Installation
 
