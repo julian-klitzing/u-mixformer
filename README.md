@@ -6,14 +6,22 @@
 
 <!-- ![image](FeedFormer-master/main_fig.png) -->
 <div align="center">
-  <img src="./main_figure.png" height="400">
+  <img src="./model_architecture.png" height="400">
 </div>
 <p align="center">
-  U-MixFormerSystem Main concept of FeedFormer.
+  U-MixFormer architecture.
 </p>
 
 We propose a novel transformer decoder, U-MixFormer, built upon the U-Net structure, designed for efficient semantic segmentation. Our approach distinguishes itself from the previous transformer methods by leveraging lateral connections between encoder and decoder stages as feature queries for the attention modules, apart from the traditional reliance on skip connections.
 Moreover, we innovatively mix hierarchical feature maps from various encoder and decoder stages to form a unified representation for keys and values, giving rise to our unique Mix-attention module.
+
+<!-- ![image](FeedFormer-master/main_fig.png) -->
+<div align="center">
+  <img src="./main_figure.png" height="400">
+</div>
+<p align="center">
+  Performance vs. computational efficiency on ADE20K (single-scale inference). U-MixFormer outperforms previous methods in all configurations.
+</p>
 
 ## Installation
 
