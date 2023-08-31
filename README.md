@@ -1,17 +1,19 @@
-# ReMixFormer
+# U-MixFormer
 
 ## Introduction
-
-### 🎉 ReMixFormer 🎉
+<!-- 
+### 🎉 ReMixFormer 🎉 -->
 
 <!-- ![image](FeedFormer-master/main_fig.png) -->
 <div align="center">
   <img src="./main_figure.png" height="400">
 </div>
 <p align="center">
-  Figure 1: Main concept of FeedFormer.
+  U-MixFormerSystem Main concept of FeedFormer.
 </p>
 
+We propose a novel transformer decoder, U-MixFormer, built upon the U-Net structure, designed for efficient semantic segmentation. Our approach distinguishes itself from the previous transformer methods by leveraging lateral connections between encoder and decoder stages as feature queries for the attention modules, apart from the traditional reliance on skip connections.
+Moreover, we innovatively mix hierarchical feature maps from various encoder and decoder stages to form a unified representation for keys and values, giving rise to our unique Mix-attention module.
 
 ## Installation
 
