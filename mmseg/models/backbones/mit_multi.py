@@ -418,16 +418,7 @@ class MixVisionTransformerMulti(BaseModule):
             in_channels = embed_dims_i
             # The ret[0] of build_norm_layer is norm name.
             norm = build_norm_layer(norm_cfg, embed_dims_i)[1]
-<<<<<<< HEAD:mmseg/models/backbones/mit_btn.py
-            if i == len(num_layers) - 1:
-                bottleneck = Bottleneck(shape=(1, 256, 256))
-                layer.append(bottleneck)
-                self.layers.append(ModuleList([patch_embed, layer, norm]))
-            else:
-                self.layers.append(ModuleList([patch_embed, layer, norm])) 
-=======
             self.layers.append(ModuleList([patch_embed, layer, norm]))
->>>>>>> skyeom:mmseg/models/backbones/mit_multi.py
             cur += num_layer
 
     def init_weights(self):
