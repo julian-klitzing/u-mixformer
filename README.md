@@ -44,6 +44,12 @@ python tools/train.py configs/umixformer/umixformer_mit-b0_8xb2-160k_ade20k-512x
 
 ## Evaluation
 
+Download pre-trained weights from [checkpoints](https://drive.google.com/drive/folders/1w72pQAsCFDxKn4oKGkG6YcsplChuKqf1?usp=drive_link).
+
+All our models were trained using 2 A100 GPUs
+
+Example: evaluate ```U-MixFormer-B0``` on ```ADE20K```:
+
 ```
 # Single-gpu training
 python tools/test.py configs/umixformer/umixformer_mit-b0_8xb2-160k_ade20k-512x512.py /path/to/checkpoint_file
