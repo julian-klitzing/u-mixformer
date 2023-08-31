@@ -20,13 +20,17 @@ Moreover, we innovatively mix hierarchical feature maps from various encoder and
   <img src="./main_figure.png" height="400">
 </div>
 <p align="center">
-  Performance vs. computational efficiency on ADE20K (single-scale inference). \
+  Performance vs. computational efficiency on ADE20K (single-scale inference).
   U-MixFormer outperforms previous methods in all configurations.
 </p>
 
 ## Installation
 
-Please refer to [get_started.md](docs/en/get_started.md#installation) for installation and [dataset_prepare.md](docs/en/user_guides/2_dataset_prepare.md#prepare-datasets) for dataset preparation.
+We use [MMSegmentation v1.0.0](https://github.com/open-mmlab/mmsegmentation/tree/v1.0.0) as the codebase.
+
+For install and data preparation, please find the guidelines in [MMSegmentation v1.0.0](https://github.com/open-mmlab/mmsegmentation/tree/v1.0.0) for the installation and data preparation.
+
+Environments are conducted on ```CUDA 11.0``` and  ```pytorch 1.13.0```
 
 ## Training
 
