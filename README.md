@@ -20,7 +20,8 @@ Moreover, we innovatively mix hierarchical feature maps from various encoder and
   <img src="./main_figure.png" height="400">
 </div>
 <p align="center">
-  Performance vs. computational efficiency on ADE20K (single-scale inference). U-MixFormer outperforms previous methods in all configurations.
+  Performance vs. computational efficiency on ADE20K (single-scale inference). 
+  U-MixFormer outperforms previous methods in all configurations.
 </p>
 
 ## Installation
