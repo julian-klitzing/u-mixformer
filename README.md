@@ -36,20 +36,20 @@ Environments are conducted on ```CUDA 11.0``` and  ```pytorch 1.13.0```
 
 ```
 # Single-gpu training
-python tools/train.py configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py
+python tools/train.py configs/umixformer/umixformer_mit-b0_8xb2-160k_ade20k-512x512.py
 
 # Multi-gpu training
-./tools/dist_train.sh configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py <GPU_NUM>
+./tools/dist_train.sh configs/umixformer/umixformer_mit-b0_8xb2-160k_ade20k-512x512.py <GPU_NUM>
 ```
 
 ## Evaluation
 
 ```
 # Single-gpu training
-python tools/test.py configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py /path/to/checkpoint_file
+python tools/test.py configs/umixformer/umixformer_mit-b0_8xb2-160k_ade20k-512x512.py /path/to/checkpoint_file
 
 # Multi-gpu training
-./tools/dist_test.sh configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py /path/to/checkpoint_file <GPU_NUM>
+./tools/dist_test.sh configs/umixformer/umixformer_mit-b0_8xb2-160k_ade20k-512x512.py /path/to/checkpoint_file <GPU_NUM>
 ```
 
 ## Qualitative Test (i.e. visualization)
@@ -61,7 +61,7 @@ python demo/image_demo.py ${IMAGE_FILE} ${CONFIG_FILE} ${CHECKPOINT_FILE} [--out
 Example: visualize ```U-MixFormer-B0``` on ```cityscapes```: 
 
 ```shell
-python demo/image_demo.py demo/demo.png configs/remixformer/remixformer_mit-b0_8xb1-160k_cityscapes-1024x1024.py \
+python demo/image_demo.py demo/demo.png configs/umixformer/umixformer_mit-b0_8xb1-160k_cityscapes-1024x1024.py \
 /path/to/checkpoint_file --out-file demo/output.png --device cuda:0 --palette cityscapes
 ```
 <!-- ### Zoom in the specific area (only for paper)
@@ -86,9 +86,9 @@ Example: Deploy ```U-MixFormer-B0``` on ADE20K into ONNX model:
 
 ```shell
 python /path/to/MMDEPLOY_PATH/tools/deploy.py ../mmdeploy/configs/mmseg/segmentation_onnxruntime_static-512x512.py \
-configs/remixformer/remixformer_mit-b0_8xb2-160k_ade20k-512x512.py CHECKPOINT_FILE \
+configs/umixformer/umixformer_mit-b0_8xb2-160k_ade20k-512x512.py CHECKPOINT_FILE \
 demo/demo.png \
---work-dir mmdeploy_model/remixformer_mit_b0_ade_512x512 \
+--work-dir mmdeploy_model/umixformer_mit_b0_ade_512x512 \
 --device cuda \
 --dump-info
 ```

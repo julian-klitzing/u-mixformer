@@ -1,4 +1,4 @@
-_base_ = ['./remixformer_mit-b0-multi_8xb2-160k_ade20k-512x512.py']
+_base_ = ['./umixformer_mit-b0-multi_8xb2-160k_ade20k-512x512.py']
 
 checkpoint = 'https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/segformer/mit_b5_20220624-658746d9.pth'  # noqa
 # dataset settings
