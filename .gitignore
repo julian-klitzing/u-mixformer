@@ -118,6 +118,10 @@ mmseg/.mim
 mmdeploy_model/
 paper/
 temp_dir/
+sk_run.sh
+vib2.py
+mini_test.py
+poc.py
 
 # Pytorch
 *.pth
