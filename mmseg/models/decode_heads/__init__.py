@@ -32,7 +32,7 @@ from .setr_mla_head import SETRMLAHead
 from .setr_up_head import SETRUPHead
 from .stdc_head import STDCHead
 from .uper_head import UPerHead
-from .umixformer_head import APFormerHead, APFormerHead2, APFormerHeadSingle, APFormerHeadMulti
+from .umixformer_head import APFormerHead, APFormerHead2, APFormerHeadSingle, APFormerHeadMulti, APFormerHead2_rebuttal
 from .umixformer_head_city import APFormerHeadCity
 
 __all__ = [
@@ -43,6 +43,6 @@ __all__ = [
     'SETRMLAHead', 'DPTHead', 'SETRMLAHead', 'SegmenterMaskTransformerHead',
     'SegformerHead', 'ISAHead', 'STDCHead', 'IterativeDecodeHead',
     'KernelUpdateHead', 'KernelUpdator', 'MaskFormerHead', 'Mask2FormerHead', 
-    'APFormerHead', 'APFormerHead2', 'APFormerHeadCity', 'APFormerHeadSingle', 'APFormerHeadMulti',
+    'APFormerHead', 'APFormerHead2', 'APFormerHeadCity', 'APFormerHeadSingle', 'APFormerHeadMulti', 'APFormerHead2_rebuttal',
     'LightHamHead', 'PIDHead'
 ]
