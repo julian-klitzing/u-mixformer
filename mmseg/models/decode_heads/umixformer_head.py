@@ -479,7 +479,7 @@ class CatKey_single(nn.Module):
         return self.sr_list(self.pool_list(x))
 
 @MODELS.register_module()
-class APFormerHeadSingle(BaseDecodeHead): #single key + replacement
+class APFormerHeadSingle(BaseDecodeHead): #single key + replacement (이거 잘됨)
     """
     Attention-Pooling Former
     """
