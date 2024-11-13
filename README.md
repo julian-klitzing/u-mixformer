@@ -1,5 +1,6 @@
-# U-MixFormer
+# U-MixFormer: UNet-like Transformer with Mix-Attention for Efficient Semantic Segmentation [[paper](https://arxiv.org/abs/2312.06272)]
 
+https://arxiv.org/abs/2312.06272
 ## Introduction
 <!-- 
 ### 🎉 U-MixFormer 🎉 -->
