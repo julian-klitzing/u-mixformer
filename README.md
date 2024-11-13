@@ -1,6 +1,5 @@
 # U-MixFormer: UNet-like Transformer with Mix-Attention for Efficient Semantic Segmentation [[paper](https://arxiv.org/abs/2312.06272)]
 
-https://arxiv.org/abs/2312.06272
 ## Introduction
 <!-- 
 ### 🎉 U-MixFormer 🎉 -->
@@ -111,7 +110,7 @@ demo/demo.png \
 
 ## Citation
 
-<!-- If you find this project useful in your research, please consider cite:
+If you find this project useful in your research, please consider cite:
 
 ```bibtex
 @misc{mmseg2020,
@@ -120,7 +119,7 @@ demo/demo.png \
     howpublished = {\url{https://github.com/open-mmlab/mmsegmentation}},
     year={2020}
 }
-``` -->
+```
 
 ## License
 
