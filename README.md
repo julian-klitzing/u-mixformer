@@ -110,14 +110,15 @@ demo/demo.png \
 
 ## Citation
 
-If you find this project useful in your research, please consider cite:
+If U-MixFormer is useful or relevant to your research, please kindly recognize our contributions by citing our paper:
 
 ```bibtex
-@misc{mmseg2020,
-    title={{MMSegmentation}: OpenMMLab Semantic Segmentation Toolbox and Benchmark},
-    author={MMSegmentation Contributors},
-    howpublished = {\url{https://github.com/open-mmlab/mmsegmentation}},
-    year={2020}
+@inproceedings{seulki2025umixformer,
+  title={U-MixFormer: UNet-like Transformer with Mix-Attention for Efficient Semantic Segmentation},
+  author={Seul-Ki Yeom and Julian von Klitzing},
+  booktitle={Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision},
+  pages={XXX--XXX},
+  year={2025}
 }
 ```
 
